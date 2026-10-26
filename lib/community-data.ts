@@ -142,9 +142,9 @@ export const COMMUNITY_USERS: Record<string, CommunityUser> = {
   },
   [WELCOME_BOT_ID]: {
     id: WELCOME_BOT_ID,
-    name: 'Kore',
-    initials: 'KO',
-    bio: 'Tu compañero de constancia en Kore Habits. Celebramos cada foto validada con fuego 🔥',
+    name: 'FotoHabit',
+    initials: 'FH',
+    bio: 'Tu compañero de constancia en FotoHabit. Celebramos cada foto validada con fuego 🔥',
     streak: 999,
     primaryHabit: 'Comunidad',
     postsCount: 0,

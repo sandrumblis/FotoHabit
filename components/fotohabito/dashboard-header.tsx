@@ -145,9 +145,9 @@ export function DashboardHeader() {
               type="button"
               onClick={() =>
                 openProModal({
-                  title: isPro ? 'Kore PRO' : 'Hazte PRO',
+                  title: isPro ? 'FotoHabit PRO' : 'Hazte PRO',
                   description: isPro
-                    ? 'Ya disfrutas de Kore PRO. Revisa planes o gestiona tu suscripción.'
+                    ? 'Ya disfrutas de FotoHabit PRO. Revisa planes o gestiona tu suscripción.'
                     : 'Desbloquea objetivos ilimitados, retos con amigos y estadísticas avanzadas.',
                   reason: 'feature',
                 })

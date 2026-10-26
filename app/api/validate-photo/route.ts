@@ -3,29 +3,45 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const SYSTEM_PROMPT_CHALLENGE = `Actúa como un juez amigable y flexible de Kore (Kore Habits).
-Tu trabajo es evaluar si la foto del usuario tiene relación lógica con el reto diario.
+/** Mensaje fijo cuando la foto no corresponde al reto (UI + API). */
+export const PHOTO_MISMATCH_MESSAGE =
+  'La foto no coincide con el reto de hoy, prueba de nuevo'
 
-Reglas (prioriza siempre la validación):
-- Si el usuario ha intentado hacer el reto o la foto muestra una intención mínima relacionada con el hábito, VALIDA la foto.
-- Sé generoso: selfies parciales, entorno, objetos relacionados, comida, ejercicio, orden, lectura, etc. cuentan.
-- Solo RECHAZA fotos que sean totalmente negras, blancas/vacías, borrosas por completo sin contenido reconocible, o que no guarden ninguna relación obvia con el reto.
+const SYSTEM_PROMPT_CHALLENGE = `Eres el juez ESTRICTO de FotoHabit (nunca digas Kore ni Kore Habits).
+Tu único trabajo: decidir si la imagen muestra claramente evidencia del RETO DE HOY descrito por el usuario.
+
+Criterio de aceptación (estricto):
+- Debes ver en la foto elementos visuales que coincidan de forma reconocible con la descripción del reto (objetos, acción, comida, contexto).
+- Ejemplos de RECHAZO: si el reto pide una infusión/té y la foto es una pared, un selfie irrelevante, un paisaje o cualquier cosa no relacionada → RECHAZA.
+- Si el reto pide vegetales/ensalada y la foto no muestra comida vegetal reconocible → RECHAZA.
+- Si el reto pide ejercicio y no hay indicios de actividad/equipamiento/entorno de entrenamiento → RECHAZA.
+- Fotos negras, vacías, ilegibles, memes genéricos o capturas de pantalla ajenas al reto → RECHAZA.
+- En caso de duda razonable sobre si la foto muestra el reto → RECHAZA (no inventes coincidencias).
+
+Criterio de aceptación (solo si hay evidencia clara):
+- Si la foto muestra de forma evidente el reto pedido → VALIDA.
+- Ángulos imperfectos o calidad media están bien SI el contenido del reto es reconocible.
+
+Mensajes:
 - Responde SIEMPRE en español.
-- Si validas, escribe un mensaje de ánimo corto, personalizado y motivador (1-2 frases) aludiendo al reto.
-- Si rechazas, escribe un mensaje amable y constructivo explicando qué falta (sin tono punitivo).
+- Si validas: 1-2 frases de ánimo concretas al reto (sin mencionar Kore).
+- Si rechazas: usa EXACTAMENTE este mensaje (sin cambios):
+  "${PHOTO_MISMATCH_MESSAGE}"
 
 Responde ÚNICAMENTE con JSON válido (sin markdown):
 {"valid": true|false, "message": "texto"}`
 
-const SYSTEM_PROMPT_MAINTENANCE = `Actúa como un juez amigable y flexible de Kore (Kore Habits) en modo Hábito Creado (Nivel 4+ / día 22+).
-El usuario ya completó el ciclo de 21 días. Premia la CONSTANCIA.
+const SYSTEM_PROMPT_MAINTENANCE = `Eres el juez ESTRICTO de FotoHabit en modo Hábito Creado / mantenimiento (nunca digas Kore ni Kore Habits).
+El usuario ya pasó el ciclo inicial. Aun así, la foto DEBE relacionarse de forma clara y reconocible con el OBJETIVO principal del hábito.
 
-Reglas (muy permisivas):
-- Valida cualquier imagen que guarde una relación GENERAL con el objetivo principal del hábito (no hace falta un reto concreto).
-- Selfies, entorno, objetos, comida, movimiento, orden, lectura, descanso… relacionados de forma mínima con el objetivo → VALIDA.
-- Celebra la racha con mensajes positivos, energéticos y breves (1-2 frases), mencionando que suma un día más al hábito.
-- Solo RECHAZA fotos totalmente negras, vacías, borrosas sin contenido, o sin ninguna relación obvia con el objetivo.
-- Responde SIEMPRE en español.
+Criterio estricto:
+- Debe haber evidencia visual del objetivo (no basta "cualquier cosa").
+- Si la foto es una pared, techo, suelo vacío, selfie irrelevante u objeto sin relación con el objetivo → RECHAZA.
+- En caso de duda → RECHAZA.
+
+Si validas: mensaje breve celebrando la constancia (1-2 frases), sin mencionar Kore.
+Si rechazas: usa EXACTAMENTE:
+"${PHOTO_MISMATCH_MESSAGE}"
 
 Responde ÚNICAMENTE con JSON válido (sin markdown):
 {"valid": true|false, "message": "texto"}`
@@ -48,6 +64,22 @@ function parseVisionJson(raw: string): VisionResult | null {
   }
 }
 
+function normalizeResult(result: VisionResult): VisionResult {
+  if (result.valid) {
+    // Nunca filtrar marca antigua en mensajes de éxito
+    return {
+      valid: true,
+      message: result.message
+        .replace(/\bKore Habits\b/gi, 'FotoHabit')
+        .replace(/\bKore\b/gi, 'FotoHabit'),
+    }
+  }
+  return {
+    valid: false,
+    message: PHOTO_MISMATCH_MESSAGE,
+  }
+}
+
 async function callOpenAIVision(params: {
   apiKey: string
   model: string
@@ -62,8 +94,20 @@ async function callOpenAIVision(params: {
   const system = maintenance ? SYSTEM_PROMPT_MAINTENANCE : SYSTEM_PROMPT_CHALLENGE
 
   const userText = maintenance
-    ? `Modo mantenimiento (día ${day ?? '22+'}).\nObjetivo principal: ${objective}\nTítulo de la tarjeta: ${title}\nDescripción: ${description}\n\nEvalúa si la foto guarda relación general con el objetivo y premia la constancia.`
-    : `Reto actual:\nTítulo: ${title}\nDescripción: ${description}\nObjetivo: ${objective}\n\nEvalúa esta foto.`
+    ? `Modo mantenimiento (día ${day ?? '22+'}).
+Objetivo principal del hábito: ${objective}
+Título: ${title}
+Descripción de referencia: ${description}
+
+Analiza la imagen. ¿Muestra evidencia clara y reconocible de este objetivo?
+Si NO coincide de forma evidente, rechaza.`
+    : `Reto de hoy (debes contrastarlo CON la imagen):
+Título: ${title}
+Descripción del reto: ${description}
+Objetivo / categoría: ${objective}
+
+Instrucción: comprueba EXPLÍCITAMENTE si lo que aparece en la foto coincide con esa descripción.
+Si la foto muestra otra cosa (pared, objeto irrelevante, escena no relacionada), rechaza.`
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -73,7 +117,7 @@ async function callOpenAIVision(params: {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.4,
+      temperature: 0.1,
       max_tokens: 220,
       response_format: { type: 'json_object' },
       messages: [
@@ -84,7 +128,7 @@ async function callOpenAIVision(params: {
             { type: 'text', text: userText },
             {
               type: 'image_url',
-              image_url: { url: dataUrl, detail: 'low' },
+              image_url: { url: dataUrl, detail: 'high' },
             },
           ],
         },
@@ -110,20 +154,7 @@ async function callOpenAIVision(params: {
     throw new Error('Respuesta de visión inválida')
   }
 
-  return parsed
-}
-
-function demoValidate(title: string, maintenance: boolean, objective: string): VisionResult {
-  if (maintenance) {
-    return {
-      valid: true,
-      message: `¡Otro día de fuego en ${objective}! Tu constancia suma. Sigue subiendo de nivel.`,
-    }
-  }
-  return {
-    valid: true,
-    message: `¡Genial! Tu foto para «${title}» queda registrada. Sigue así, cada día suma.`,
-  }
+  return normalizeResult(parsed)
 }
 
 export async function POST(request: Request) {
@@ -174,35 +205,34 @@ export async function POST(request: Request) {
     const apiKey = process.env.OPENAI_API_KEY?.trim()
     const model = process.env.OPENAI_VISION_MODEL?.trim() || 'gpt-4o-mini'
 
-    let result: VisionResult
-
+    // Sin clave de visión no se puede validar con rigor: no registrar progreso.
     if (!apiKey) {
-      result = demoValidate(title, maintenance, objective)
-    } else {
-      result = await callOpenAIVision({
-        apiKey,
-        model,
-        dataUrl,
-        title,
-        description: description || title,
-        objective,
+      return NextResponse.json({
+        valid: false,
+        message: PHOTO_MISMATCH_MESSAGE,
+        demo: true,
         maintenance,
-        day,
+        reason: 'missing_openai_key',
       })
     }
 
-    if (!result.message) {
-      result.message = result.valid
-        ? maintenance
-          ? `¡Día sumado a tu racha de ${objective}! Sigue en modo libre.`
-          : `¡Reto «${title}» validado! Sigue construyendo tu racha.`
-        : 'No hemos podido validar esta foto. Prueba con otra más clara y relacionada con el objetivo.'
-    }
+    const result = await callOpenAIVision({
+      apiKey,
+      model,
+      dataUrl,
+      title,
+      description: description || title,
+      objective,
+      maintenance,
+      day,
+    })
 
     return NextResponse.json({
       valid: result.valid,
-      message: result.message,
-      demo: !apiKey,
+      message: result.valid
+        ? result.message || `¡Reto «${title}» validado! Sigue construyendo tu racha.`
+        : PHOTO_MISMATCH_MESSAGE,
+      demo: false,
       maintenance,
     })
   } catch (error) {

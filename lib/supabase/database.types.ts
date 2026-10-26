@@ -1,6 +1,9 @@
 /**
- * Tipos alineados con el esquema FotoHabit en Supabase.
- * Tablas: profiles, habits, posts · bucket público: posts
+ * Tipos alineados con el esquema REAL de Supabase (FotoHabit).
+ * profiles: id, username, avatar_url, level, created_at
+ * habits: id, user_id, title, category, streak_days, created_at
+ * posts: id, user_id, habit_id, image_url, caption, created_at
+ * bucket público: posts
  */
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
@@ -10,26 +13,23 @@ export type Database = {
       profiles: {
         Row: {
           id: string
-          display_name: string | null
+          username: string | null
           avatar_url: string | null
-          bio: string | null
-          accent: string | null
+          level: number | null
           created_at: string
         }
         Insert: {
           id: string
-          display_name?: string | null
+          username?: string | null
           avatar_url?: string | null
-          bio?: string | null
-          accent?: string | null
+          level?: number | null
           created_at?: string
         }
         Update: {
           id?: string
-          display_name?: string | null
+          username?: string | null
           avatar_url?: string | null
-          bio?: string | null
-          accent?: string | null
+          level?: number | null
           created_at?: string
         }
       }
@@ -38,30 +38,24 @@ export type Database = {
           id: string
           user_id: string
           title: string
-          category_key: string | null
-          accent: string | null
+          category: string | null
           streak_days: number | null
-          level: number | null
           created_at: string
         }
         Insert: {
           id?: string
           user_id: string
           title: string
-          category_key?: string | null
-          accent?: string | null
+          category?: string | null
           streak_days?: number | null
-          level?: number | null
           created_at?: string
         }
         Update: {
           id?: string
           user_id?: string
           title?: string
-          category_key?: string | null
-          accent?: string | null
+          category?: string | null
           streak_days?: number | null
-          level?: number | null
           created_at?: string
         }
       }
@@ -72,7 +66,6 @@ export type Database = {
           habit_id: string | null
           image_url: string
           caption: string | null
-          likes_count: number | null
           created_at: string
         }
         Insert: {
@@ -81,7 +74,6 @@ export type Database = {
           habit_id?: string | null
           image_url: string
           caption?: string | null
-          likes_count?: number | null
           created_at?: string
         }
         Update: {
@@ -90,7 +82,6 @@ export type Database = {
           habit_id?: string | null
           image_url?: string
           caption?: string | null
-          likes_count?: number | null
           created_at?: string
         }
       }

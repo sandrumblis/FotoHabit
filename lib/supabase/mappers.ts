@@ -3,18 +3,37 @@ import type { HabitRow, PostWithRelations, ProfileRow } from './database.types'
 
 const ACCENTS: HabitAccent[] = ['cyan', 'yellow', 'lime', 'fuchsia', 'purple']
 
+const CATEGORY_ACCENT: Record<string, HabitAccent> = {
+  'actividad-fisica': 'cyan',
+  'comida-saludable': 'lime',
+  'enfoque-mente': 'fuchsia',
+  'orden-limpieza': 'yellow',
+  'sueno-descanso': 'purple',
+  'ahorro-finanzas': 'lime',
+  'sin-humos': 'yellow',
+  personalizado: 'cyan',
+}
+
 export function asAccent(value: string | null | undefined, fallback: HabitAccent = 'cyan'): HabitAccent {
   if (value && ACCENTS.includes(value as HabitAccent)) return value as HabitAccent
   return fallback
 }
 
+export function accentFromCategory(category: string | null | undefined): HabitAccent {
+  if (!category) return 'cyan'
+  if (ACCENTS.includes(category as HabitAccent)) return category as HabitAccent
+  return CATEGORY_ACCENT[category] ?? 'cyan'
+}
+
 function initialsFromName(name: string) {
-  return name
-    .split(/\s+/)
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'FH'
+  return (
+    name
+      .split(/\s+/)
+      .map((p) => p[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'FH'
+  )
 }
 
 function unwrapOne<T>(value: T | T[] | null | undefined): T | null {
@@ -26,19 +45,19 @@ export function profileToCommunityUser(
   profile: ProfileRow,
   extras?: Partial<CommunityUser>,
 ): CommunityUser {
-  const name = profile.display_name?.trim() || 'Usuario FotoHabit'
+  const name = profile.username?.trim() || 'Usuario FotoHabit'
   return {
     id: profile.id,
     name,
     initials: initialsFromName(name),
-    bio: profile.bio ?? '',
+    bio: extras?.bio ?? '',
     streak: extras?.streak ?? 0,
     primaryHabit: extras?.primaryHabit ?? 'Hábitos',
     postsCount: extras?.postsCount ?? 0,
     followersCount: extras?.followersCount ?? 0,
     followingCount: extras?.followingCount ?? 0,
     likesCount: extras?.likesCount ?? 0,
-    accent: asAccent(profile.accent),
+    accent: extras?.accent ?? 'cyan',
     followerIds: extras?.followerIds ?? [],
     followingIds: extras?.followingIds ?? [],
     isSelf: extras?.isSelf,
@@ -60,10 +79,11 @@ export function mapPostRow(row: PostWithRelations): CommunityPost | null {
   const habit = unwrapOne(row.habits) as HabitRow | null
   if (!profile) return null
 
-  const accent = asAccent(habit?.accent ?? profile.accent)
+  const accent = accentFromCategory(habit?.category)
   const author = profileToCommunityUser(profile, {
     streak: habit?.streak_days ?? 0,
     primaryHabit: habit?.title ?? 'Hábito',
+    accent,
   })
 
   return {
@@ -73,13 +93,13 @@ export function mapPostRow(row: PostWithRelations): CommunityPost | null {
     accent,
     caption: row.caption ?? '',
     time: formatRelativeTime(row.created_at),
-    likes: row.likes_count ?? 0,
+    likes: 0,
     visibility: 'public',
-    level: habit?.level ?? undefined,
+    level: profile.level ?? undefined,
     streakDays: habit?.streak_days ?? undefined,
     imageUrl: row.image_url,
     previewUrl: null,
-    neonFire: (row.likes_count ?? 0) >= 20,
+    neonFire: false,
     comments: [],
     author,
   }

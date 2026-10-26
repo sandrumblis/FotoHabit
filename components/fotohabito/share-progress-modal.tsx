@@ -53,7 +53,7 @@ function roundRect(
 }
 
 function shareUrl() {
-  if (typeof window === 'undefined') return 'https://kore.habits'
+  if (typeof window === 'undefined') return 'https://fotohabit.app'
   return window.location.origin
 }
 
@@ -81,7 +81,7 @@ async function buildProgressBlob(data: ShareProgressData): Promise<Blob | null> 
   ctx.strokeRect(56, 56, CARD_W - 112, CARD_H - 112)
 
   // Brand mark
-  const logo = await loadImage('/images/fotohabito-isotype.jpg?v=kore-k2')
+  const logo = await loadImage('/images/fotohabito-isotype.jpg?v=fotohabit-2')
   if (logo) {
     ctx.save()
     ctx.beginPath()
@@ -99,7 +99,7 @@ async function buildProgressBlob(data: ShareProgressData): Promise<Blob | null> 
 
   ctx.fillStyle = '#00f0ff'
   ctx.font = '700 56px system-ui, sans-serif'
-  ctx.fillText('Kore', 220, 145)
+  ctx.fillText('FotoHabit', 220, 145)
   ctx.fillStyle = 'rgba(188, 19, 254, 0.95)'
   ctx.font = '600 26px ui-monospace, monospace'
   ctx.fillText(HABIT_MOTTO.toUpperCase(), 220, 190)
@@ -126,13 +126,13 @@ async function buildProgressBlob(data: ShareProgressData): Promise<Blob | null> 
   ctx.fillStyle = '#fff'
   ctx.font = '700 42px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText(data.initials || 'KO', CARD_W / 2, avatarY + 86)
+  ctx.fillText(data.initials || 'FH', CARD_W / 2, avatarY + 86)
   ctx.fillStyle = '#fff'
   ctx.font = '600 44px system-ui, sans-serif'
   ctx.fillText(data.displayName, CARD_W / 2, avatarY + 200)
   ctx.fillStyle = 'rgba(255,255,255,0.55)'
   ctx.font = '500 28px ui-monospace, monospace'
-  ctx.fillText('MI PROGRESO EN KORE', CARD_W / 2, avatarY + 250)
+  ctx.fillText('MI PROGRESO EN FOTOHABIT', CARD_W / 2, avatarY + 250)
   ctx.textAlign = 'left'
 
   // Metric cards
@@ -261,7 +261,7 @@ async function buildProgressBlob(data: ShareProgressData): Promise<Blob | null> 
   )
   ctx.fillStyle = '#00f0ff'
   ctx.font = '700 36px system-ui, sans-serif'
-  ctx.fillText('Kore Habits', CARD_W / 2, 1810)
+  ctx.fillText('FotoHabit', CARD_W / 2, 1810)
   ctx.fillStyle = 'rgba(255,230,0,0.85)'
   ctx.font = '600 24px ui-monospace, monospace'
   ctx.fillText(HABIT_MOTTO, CARD_W / 2, 1860)
@@ -285,7 +285,7 @@ export function ShareProgressModal({ open, data, onClose }: ShareProgressModalPr
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  const shareText = `Mi progreso en Kore ⚡\nRacha ${data.longestStreak}d · Éxito 21 días ${data.successRate}%\n${HABIT_MOTTO}\n${shareUrl()}`
+  const shareText = `Mi progreso en FotoHabit ⚡\nRacha ${data.longestStreak}d · Éxito 21 días ${data.successRate}%\n${HABIT_MOTTO}\n${shareUrl()}`
 
   const runShare = useCallback(async () => {
     setBusy('share')
@@ -293,7 +293,7 @@ export function ShareProgressModal({ open, data, onClose }: ShareProgressModalPr
     try {
       const blob = await buildProgressBlob(data)
       if (!blob) throw new Error('fail')
-      const file = new File([blob], `kore-progreso-${Date.now()}.png`, {
+      const file = new File([blob], `fotohabit-progreso-${Date.now()}.png`, {
         type: 'image/png',
       })
 
@@ -301,13 +301,13 @@ export function ShareProgressModal({ open, data, onClose }: ShareProgressModalPr
         const canFiles = !navigator.canShare || navigator.canShare({ files: [file] })
         if (canFiles) {
           await navigator.share({
-            title: 'Kore Habits · Progreso',
+            title: 'FotoHabit · Progreso',
             text: shareText,
             files: [file],
           })
         } else {
           await navigator.share({
-            title: 'Kore Habits · Progreso',
+            title: 'FotoHabit · Progreso',
             text: shareText,
             url: shareUrl(),
           })
@@ -340,7 +340,7 @@ export function ShareProgressModal({ open, data, onClose }: ShareProgressModalPr
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `kore-progreso-${Date.now()}.png`
+      a.download = `fotohabit-progreso-${Date.now()}.png`
       a.click()
       URL.revokeObjectURL(url)
       setNotice('Imagen guardada')
@@ -402,12 +402,12 @@ export function ShareProgressModal({ open, data, onClose }: ShareProgressModalPr
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/images/fotohabito-isotype.jpg?v=kore-k2"
+                src="/images/fotohabito-isotype.jpg?v=fotohabit-2"
                 alt=""
                 className="size-7 rounded-full object-cover shadow-[0_0_12px_-2px_rgba(0,240,255,0.5)]"
               />
               <div>
-                <p className="text-xs font-bold text-neon-cyan">Kore</p>
+                <p className="text-xs font-bold text-neon-cyan">FotoHabit</p>
                 <p className="font-mono text-[7px] uppercase tracking-wider text-neon-fuchsia">
                   {HABIT_MOTTO}
                 </p>
@@ -473,7 +473,7 @@ export function ShareProgressModal({ open, data, onClose }: ShareProgressModalPr
             </div>
 
             <p className="mt-2 text-center font-mono text-[8px] text-white/55">
-              Kore Habits · {data.totalFueguitos} 🔥
+              FotoHabit · {data.totalFueguitos} 🔥
             </p>
           </div>
         </div>

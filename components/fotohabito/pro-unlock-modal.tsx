@@ -66,20 +66,20 @@ export function ProUnlockModal({
       ? 'Límite gratuito'
       : reason === 'category'
         ? 'Objetivo PRO'
-        : 'Kore PRO'
+        : 'FotoHabit PRO'
 
   const headline =
     reason === 'limit'
-      ? 'Pasa a Kore PRO para más objetivos'
+      ? 'Pasa a FotoHabit PRO para más objetivos'
       : title
         ? `Desbloquea ${title}`
-        : 'Desbloquea Kore PRO'
+        : 'Desbloquea FotoHabit PRO'
 
   const sub =
     description ??
     (reason === 'limit'
       ? 'En la versión gratuita puedes tener hasta 2 objetivos activos. Con PRO, gestiona ilimitados a la vez.'
-      : 'Suscríbete a Kore PRO y desbloquea objetivos ilimitados, retos con amigos, objetivos personalizados y estadísticas avanzadas.')
+      : 'Suscríbete a FotoHabit PRO y desbloquea objetivos ilimitados, retos con amigos, objetivos personalizados y estadísticas avanzadas.')
 
   function handleSubscribe() {
     setBusy(true)
@@ -146,7 +146,7 @@ export function ProUnlockModal({
             </p>
             {isPro ? (
               <p className="rounded-full border border-neon-lime/40 bg-neon-lime/10 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-neon-lime">
-                Ya eres Kore PRO
+                Ya eres FotoHabit PRO
               </p>
             ) : null}
           </div>
@@ -223,7 +223,7 @@ export function ProUnlockModal({
             </div>
             <div className="rounded-2xl border border-neon-yellow/35 bg-neon-yellow/5 p-3">
               <p className="font-mono text-[9px] uppercase tracking-wider text-neon-yellow">
-                Kore PRO
+                FotoHabit PRO
               </p>
               <ul className="mt-2 space-y-1.5">
                 {KORE_PRO_FEATURES.map((f, i) => {
@@ -251,7 +251,7 @@ export function ProUnlockModal({
             className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-neon-yellow px-6 text-sm font-semibold text-background shadow-[0_0_32px_-6px_var(--color-neon-yellow)] transition-transform hover:scale-[1.01] disabled:opacity-60"
           >
             <Crown className="size-4" aria-hidden="true" />
-            {isPro ? 'Ya tienes PRO' : busy ? 'Activando…' : 'Suscribirme a Kore PRO'}
+            {isPro ? 'Ya tienes PRO' : busy ? 'Activando…' : 'Suscribirme a FotoHabit PRO'}
           </button>
           <button
             type="button"

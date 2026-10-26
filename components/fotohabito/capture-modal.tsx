@@ -1,13 +1,6 @@
 'use client'
 
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   Camera,
   Check,
@@ -21,6 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { ShareAchievement } from './share-achievement'
+import { useHabitProgress } from './habit-progress-context'
 import { getLevelForDay } from '@/lib/habit-levels'
 import { cn } from '@/lib/utils'
 
@@ -58,6 +52,7 @@ type Step = 'camera' | 'preview' | 'scanning' | 'success' | 'error'
 type FacingMode = 'environment' | 'user'
 
 export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureModalProps) {
+  const { canValidateToday, dailyValidationMessage, hasCompletedDailyHabit } = useHabitProgress()
   const titleId = useId()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -184,7 +179,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     fileRef.current = file
     setPreviewUrl(URL.createObjectURL(file))
-    setFileName(file.name || `kore-${Date.now()}.jpg`)
+    setFileName(file.name || `fotohabit-${Date.now()}.jpg`)
     setErrorMessage(null)
     stopCamera()
     setStep('preview')
@@ -207,7 +202,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       canvas.toBlob(resolve, 'image/jpeg', 0.92),
     )
     if (!blob) return
-    const file = new File([blob], `kore-capture-${Date.now()}.jpg`, { type: 'image/jpeg' })
+    const file = new File([blob], `fotohabit-capture-${Date.now()}.jpg`, { type: 'image/jpeg' })
     acceptFile(file)
   }
 
@@ -220,6 +215,12 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
   async function validateWithAI() {
     const file = fileRef.current
     if (!previewUrl || !fileName || !file) return
+
+    if (!canValidateToday() || hasCompletedDailyHabit) {
+      setErrorMessage(dailyValidationMessage)
+      setStep('error')
+      return
+    }
 
     setStep('scanning')
     setErrorMessage(null)
@@ -251,14 +252,16 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       }
 
       const valid = Boolean(data.valid)
+      const PHOTO_MISMATCH = 'La foto no coincide con el reto de hoy, prueba de nuevo'
       const message =
         data.message?.trim() ||
-        (valid
-          ? '¡Reto validado! Sigue con tu racha.'
-          : 'No hemos podido validar esta foto. Prueba con otra.')
+        (valid ? '¡Reto validado! Sigue con tu racha.' : PHOTO_MISMATCH)
 
       if (!valid) {
-        setErrorMessage(message)
+        // No registrar progreso: solo error y reintento.
+        setPendingResult(null)
+        setSuccessMessage(null)
+        setErrorMessage(PHOTO_MISMATCH)
         setStep('error')
         return
       }
@@ -269,12 +272,12 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
         caption: caption.trim(),
         privacy,
         valid: true,
-        message,
+        message: message.replace(/\bKore Habits\b/gi, 'FotoHabit').replace(/\bKore\b/gi, 'FotoHabit'),
         day: challenge?.day,
         categoryId: challenge?.categoryId,
       }
       setPendingResult(result)
-      setSuccessMessage(message)
+      setSuccessMessage(result.message)
       setStep('success')
     } catch (err) {
       setErrorMessage(
@@ -293,9 +296,19 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     void startCamera(facing)
   }
 
-  function finishSuccess() {
+  function finishSuccess(nextPrivacy: CapturePrivacy = privacy) {
     if (!pendingResult) return
-    const final: CaptureResult = { ...pendingResult, caption: caption.trim(), privacy }
+    // Seguridad: no confirmar si entre medias ya se validó otro reto hoy.
+    if (hasCompletedDailyHabit) {
+      setErrorMessage(dailyValidationMessage)
+      setStep('error')
+      return
+    }
+    const final: CaptureResult = {
+      ...pendingResult,
+      caption: caption.trim(),
+      privacy: nextPrivacy,
+    }
     // Parent owns previewUrl after confirm
     setPreviewUrl(null)
     fileRef.current = null
@@ -315,14 +328,14 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       <input
         ref={galleryRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
         className="sr-only"
         onChange={(e) => acceptFile(e.target.files?.[0])}
       />
       <input
         ref={cameraFileRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
         capture="environment"
         className="sr-only"
         onChange={(e) => acceptFile(e.target.files?.[0])}
@@ -411,10 +424,10 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
                   <button
                     type="button"
                     onClick={() => galleryRef.current?.click()}
-                    className="inline-flex h-10 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-xs font-semibold text-white"
+                    className="inline-flex h-10 items-center gap-2 rounded-full border border-neon-lime/45 bg-neon-lime/15 px-4 text-xs font-semibold text-neon-lime"
                   >
                     <ImagePlus className="size-3.5" aria-hidden="true" />
-                    Galería
+                    Subir desde el dispositivo
                   </button>
                 </div>
               </div>
@@ -443,21 +456,21 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
             <div className="relative flex size-28 items-center justify-center">
               <span className="absolute inset-0 animate-ping rounded-full border border-neon-cyan/40" />
               <span className="absolute inset-2 animate-pulse rounded-full border border-neon-fuchsia/50 shadow-[0_0_40px_-4px_var(--color-neon-fuchsia)]" />
-              <span className="animate-kore-scan absolute inset-x-3 h-0.5 bg-gradient-to-r from-transparent via-neon-cyan to-transparent shadow-[0_0_16px_var(--color-neon-cyan)]" />
+              <span className="animate-fotohabit-scan absolute inset-x-3 h-0.5 bg-gradient-to-r from-transparent via-neon-cyan to-transparent shadow-[0_0_16px_var(--color-neon-cyan)]" />
               <Loader2 className="relative size-8 animate-spin text-neon-cyan" aria-hidden="true" />
             </div>
             <div className="text-center">
               <p className="text-base font-semibold text-white">Analizando prueba con IA…</p>
               <p className="mt-1 text-xs text-white/60">
-                Kore comprueba que la foto encaje con tu reto de hoy
+                FotoHabit comprueba que la foto encaje con tu reto de hoy
               </p>
             </div>
           </div>
         ) : null}
 
         {step === 'success' ? (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-end bg-black/55 backdrop-blur-[1px]">
-            <div className="flex max-h-[min(92dvh,820px)] w-full max-w-md flex-col gap-3 overflow-y-auto rounded-t-3xl border border-neon-lime/40 bg-background/95 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_0_50px_-12px_var(--color-neon-lime)] sm:rounded-3xl sm:mb-6">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-end bg-black/55 p-3 backdrop-blur-[1px] sm:p-4">
+            <div className="flex max-h-[min(92dvh,820px)] w-full max-w-md flex-col gap-4 overflow-y-auto rounded-t-3xl border border-neon-lime/40 bg-background/95 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-[0_0_50px_-12px_var(--color-neon-lime)] sm:mb-4 sm:rounded-3xl sm:px-5">
               <div className="flex flex-col items-center gap-2 text-center">
                 <span className="flex size-14 items-center justify-center rounded-full border border-neon-lime/50 bg-neon-lime/15 text-neon-lime shadow-[0_0_28px_-4px_var(--color-neon-lime)]">
                   <Check className="size-7 stroke-[3]" aria-hidden="true" />
@@ -473,54 +486,67 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
                 </p>
               </div>
 
-              <ShareAchievement
-                compact
-                data={{
-                  photoUrl: previewUrl,
-                  habit: challenge?.objective || challenge?.title || 'Hábito',
-                  level: getLevelForDay(Math.max(challenge?.day ?? 1, 1)),
-                  streakDays: challenge?.day ?? 1,
-                  title: '¡Prueba validada!',
-                  subtitle: successMessage ?? undefined,
-                }}
-              />
-
               <label className="w-full text-left">
                 <span className="text-[11px] text-muted-foreground">Pie de foto (opcional)</span>
                 <textarea
                   value={caption}
                   onChange={(e) => setCaption(e.target.value.slice(0, 200))}
                   rows={2}
-                  className="mt-1 w-full resize-none rounded-2xl border border-white/10 bg-background/80 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-cyan/50"
+                  className="mt-1 w-full resize-none rounded-2xl border border-white/10 bg-background/80 px-3 py-2 text-base text-foreground outline-none focus:border-neon-cyan/50 sm:text-sm"
                   placeholder="Comparte cómo te sentiste hoy…"
                 />
               </label>
 
-              <div className="grid w-full gap-2">
-                <PrivacyOption
-                  selected={privacy === 'public'}
-                  onSelect={() => setPrivacy('public')}
-                  icon={<Globe2 className="size-4" aria-hidden="true" />}
-                  title="Publicar en la comunidad Kore"
-                  description="Aparece en el feed global"
-                />
-                <PrivacyOption
-                  selected={privacy === 'private'}
-                  onSelect={() => setPrivacy('private')}
-                  icon={<Lock className="size-4" aria-hidden="true" />}
-                  title="Solo validar"
-                  description="Guarda el progreso sin publicar en el feed"
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPrivacy('public')
+                  finishSuccess('public')
+                }}
+                className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-neon-lime px-4 text-base font-bold text-background shadow-[0_0_40px_-4px_var(--color-neon-lime)] transition-transform hover:scale-[1.02] active:scale-[0.99]"
+              >
+                <Globe2 className="size-5" aria-hidden="true" />
+                Publicar en FotoHabit (Feed global)
+              </button>
+              <p className="-mt-2 text-center text-[11px] text-muted-foreground">
+                Máximo protagonismo: tu prueba entra al feed de la comunidad
+              </p>
 
               <button
                 type="button"
-                onClick={finishSuccess}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-neon-lime text-sm font-semibold text-background shadow-[0_0_32px_-6px_var(--color-neon-lime)]"
+                onClick={() => {
+                  setPrivacy('private')
+                  finishSuccess('private')
+                }}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 text-sm font-medium text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
               >
-                <Flame className="size-4 fill-background" aria-hidden="true" />
-                Continuar
+                <Lock className="size-4" aria-hidden="true" />
+                Solo validar (sin publicar)
               </button>
+
+              <details className="group border-t border-white/10 pt-3">
+                <summary className="cursor-pointer list-none text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">
+                  <span className="inline-flex items-center gap-2">
+                    Compartir en redes externas
+                    <span className="text-white/30 group-open:hidden">▾</span>
+                    <span className="hidden text-white/30 group-open:inline">▴</span>
+                  </span>
+                </summary>
+                <div className="mt-3">
+                  <ShareAchievement
+                    compact
+                    emphasis="secondary"
+                    data={{
+                      photoUrl: previewUrl,
+                      habit: challenge?.objective || challenge?.title || 'Hábito',
+                      level: getLevelForDay(Math.max(challenge?.day ?? 1, 1)),
+                      streakDays: challenge?.day ?? 1,
+                      title: '¡Prueba validada!',
+                      subtitle: successMessage ?? undefined,
+                    }}
+                  />
+                </div>
+              </details>
             </div>
           </div>
         ) : null}
@@ -559,35 +585,47 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
 
       {/* Bottom controls */}
       {step === 'camera' ? (
-        <div className="relative z-20 flex items-center justify-between gap-4 px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+        <div className="relative z-20 space-y-3 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3">
           <button
             type="button"
             onClick={() => galleryRef.current?.click()}
-            className="flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white backdrop-blur-md"
-            aria-label="Elegir de la galería"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-neon-lime/40 bg-neon-lime/10 text-sm font-semibold text-neon-lime shadow-[0_0_24px_-8px_var(--color-neon-lime)]"
           >
-            <ImagePlus className="size-5" aria-hidden="true" />
+            <ImagePlus className="size-4" aria-hidden="true" />
+            Subir foto desde el dispositivo
           </button>
 
-          <button
-            type="button"
-            onClick={() => void snapPhoto()}
-            disabled={!cameraReady}
-            className="relative flex size-[4.5rem] items-center justify-center rounded-full border-4 border-neon-cyan bg-white shadow-[0_0_36px_-4px_var(--color-neon-cyan)] transition-transform enabled:hover:scale-105 disabled:opacity-40"
-            aria-label="Capturar foto"
-          >
-            <span className="size-14 rounded-full bg-white ring-2 ring-black/10" />
-          </button>
+          <div className="flex items-center justify-between gap-4 px-1">
+            <button
+              type="button"
+              onClick={() => galleryRef.current?.click()}
+              className="flex size-12 flex-col items-center justify-center gap-0.5 rounded-full border border-white/15 bg-white/10 text-white backdrop-blur-md"
+              aria-label="Subir imagen desde archivos del dispositivo"
+              title="Archivos / galería"
+            >
+              <ImagePlus className="size-5" aria-hidden="true" />
+            </button>
 
-          <button
-            type="button"
-            onClick={() => void flipCamera()}
-            disabled={!cameraReady}
-            className="flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white backdrop-blur-md disabled:opacity-40"
-            aria-label="Cambiar cámara"
-          >
-            <SwitchCamera className="size-5" aria-hidden="true" />
-          </button>
+            <button
+              type="button"
+              onClick={() => void snapPhoto()}
+              disabled={!cameraReady}
+              className="relative flex size-[4.5rem] items-center justify-center rounded-full border-4 border-neon-cyan bg-white shadow-[0_0_36px_-4px_var(--color-neon-cyan)] transition-transform enabled:hover:scale-105 disabled:opacity-40"
+              aria-label="Capturar foto"
+            >
+              <span className="size-14 rounded-full bg-white ring-2 ring-black/10" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void flipCamera()}
+              disabled={!cameraReady}
+              className="flex size-12 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white backdrop-blur-md disabled:opacity-40"
+              aria-label="Cambiar cámara"
+            >
+              <SwitchCamera className="size-5" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -598,6 +636,14 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
               {challenge.description}
             </p>
           ) : null}
+          <button
+            type="button"
+            onClick={() => galleryRef.current?.click()}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 text-xs font-semibold text-white/90"
+          >
+            <ImagePlus className="size-3.5" aria-hidden="true" />
+            Elegir otra imagen del dispositivo
+          </button>
           <div className="flex gap-2">
             <button
               type="button"
@@ -605,7 +651,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 text-sm font-semibold text-white"
             >
               <RefreshCw className="size-4" aria-hidden="true" />
-              Otra foto
+              Cámara
             </button>
             <button
               type="button"
@@ -623,46 +669,3 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
   )
 }
 
-function PrivacyOption({
-  selected,
-  onSelect,
-  icon,
-  title,
-  description,
-}: {
-  selected: boolean
-  onSelect: () => void
-  icon: ReactNode
-  title: string
-  description: string
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onSelect}
-      className={cn(
-        'flex w-full items-start gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-all',
-        selected
-          ? 'border-neon-cyan/50 bg-neon-cyan/10 shadow-[0_0_20px_-10px_var(--color-neon-cyan)]'
-          : 'border-white/10 bg-background/50 hover:border-white/20',
-      )}
-    >
-      <span
-        className={cn(
-          'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border',
-          selected
-            ? 'border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan'
-            : 'border-white/10 text-muted-foreground',
-        )}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-foreground">{title}</span>
-        <span className="block text-xs text-muted-foreground">{description}</span>
-      </span>
-    </button>
-  )
-}

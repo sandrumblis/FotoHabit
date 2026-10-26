@@ -91,7 +91,13 @@ export function HomeSocial() {
     }
   }, [authUser, mockMe])
 
-  const { getCompleted, completeDay } = useHabitProgress()
+  const {
+    getCompleted,
+    completeDay,
+    canValidateToday,
+    dailyValidationMessage,
+    hasCompletedDailyHabit,
+  } = useHabitProgress()
   const { posts, publishPost, getPostsByUserId, loading, error, hasPublishedLive } =
     useSocialFeed()
 
@@ -168,6 +174,11 @@ export function HomeSocial() {
   }, [])
 
   function openCaptureForCategory(categoryId: HabitCategoryId) {
+    if (!canValidateToday()) {
+      setToast(dailyValidationMessage)
+      window.setTimeout(() => setToast(null), 5600)
+      return
+    }
     const completed = getCompleted(categoryId)
     const day = getCurrentDay(completed)
     const challenge = getChallenge(categoryId, day)
@@ -186,7 +197,14 @@ export function HomeSocial() {
   async function handleValidated(result: CaptureResult) {
     if (!result.valid || !result.categoryId) return
     const categoryId = result.categoryId as HabitCategoryId
-    const next = completeDay(categoryId, { isPro })
+    const completion = completeDay(categoryId, { isPro })
+    if (!completion.ok) {
+      setToast(completion.message)
+      setCaptureChallenge(null)
+      window.setTimeout(() => setToast(null), 5600)
+      return
+    }
+    const next = completion.next
     const level = getLevelFromCompleted(next)
     const categoryMeta = getCategoryMeta(categoryId)
     const day = result.day ?? next

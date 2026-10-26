@@ -115,7 +115,6 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.pointerType === 'mouse' && e.button !== 0) return
-    // No capturar el pointer sobre botones: deja que onClick funcione
     if (isInteractiveTarget(e.target)) return
     const el = scrollerRef.current
     if (!el) return
@@ -126,7 +125,11 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
       moved: false,
       pointerId: e.pointerId,
     }
-    el.setPointerCapture(e.pointerId)
+    try {
+      el.setPointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
+    }
   }
 
   function handlePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -137,25 +140,22 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
     const dx = e.clientX - drag.startX
     if (Math.abs(dx) > 6) drag.moved = true
     el.scrollLeft = drag.startScroll - dx
-    updateEdges()
   }
 
-  function endDrag() {
+  function endDrag(e: ReactPointerEvent<HTMLDivElement>) {
     const drag = dragRef.current
     if (!drag.active) return
+    drag.active = false
     const el = scrollerRef.current
     if (el && drag.pointerId != null) {
       try {
         el.releasePointerCapture(drag.pointerId)
       } catch {
-        /* noop */
+        /* ignore */
       }
     }
-    // Reset moved en el siguiente tick para no bloquear clicks
-    const wasMoved = drag.moved
-    dragRef.current = { active: false, startX: 0, startScroll: 0, moved: wasMoved, pointerId: null }
     window.setTimeout(() => {
-      dragRef.current.moved = false
+      drag.moved = false
     }, 0)
   }
 
@@ -165,48 +165,53 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
   }
 
   return (
-    <section aria-label="Objetivos activos" className="flex flex-col gap-3">
-      <div className="flex items-end justify-between gap-3 px-0.5">
-        <div>
-          <button
-            type="button"
-            onClick={onAddGoalClick}
-            aria-label="Explorar y añadir objetivos"
-            className={cn(
-              'font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan',
-              'cursor-pointer rounded-sm transition-all duration-200',
-              'hover:text-neon-cyan/90 hover:underline hover:underline-offset-4 hover:decoration-neon-cyan/50',
-              'hover:[text-shadow:0_0_12px_var(--color-neon-cyan)]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-            )}
-          >
-            Objetivos
-          </button>
-          <h2 className="text-sm font-semibold tracking-tight text-foreground">
-            {activeObjectives.length === 0
-              ? 'Añade tu primer objetivo'
-              : 'Tus objetivos activos'}
-          </h2>
-        </div>
-        {canScrollRight ? (
-          <p className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan/70">
-            Desliza →
+    <section
+      aria-label="Objetivos activos"
+      className="rounded-3xl border border-white/8 bg-card/40 px-4 py-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] sm:px-5 sm:py-6"
+    >
+      <header className="mb-5 flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-neon-cyan/80">
+            Comunidad
           </p>
-        ) : null}
-      </div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">
+            {activeObjectives.length === 0
+              ? 'Empieza con un objetivo'
+              : 'Objetivos activos'}
+          </h2>
+          <p className="max-w-[18rem] text-pretty text-xs leading-relaxed text-muted-foreground sm:max-w-sm">
+            {activeObjectives.length === 0
+              ? 'Elige un hábito y valida una foto al día para subir de nivel.'
+              : 'Toca un anillo para abrir el reto de hoy.'}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onAddGoalClick}
+          className={cn(
+            'shrink-0 rounded-full border border-neon-cyan/35 bg-neon-cyan/10 px-3.5 py-2',
+            'font-mono text-[10px] uppercase tracking-[0.16em] text-neon-cyan',
+            'transition hover:border-neon-cyan/60 hover:bg-neon-cyan/15',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          )}
+        >
+          + Añadir
+        </button>
+      </header>
 
       <div className="relative w-full max-w-full">
         <div
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute inset-y-0 left-0 z-[2] w-8 bg-gradient-to-r from-background via-background/70 to-transparent transition-opacity duration-300',
+            'pointer-events-none absolute inset-y-0 left-0 z-[2] w-6 rounded-l-2xl bg-gradient-to-r from-card/90 to-transparent transition-opacity duration-300',
             canScrollLeft ? 'opacity-100' : 'opacity-0',
           )}
         />
         <div
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute inset-y-0 right-0 z-[2] w-12 bg-gradient-to-l from-background via-background/80 to-transparent transition-opacity duration-300',
+            'pointer-events-none absolute inset-y-0 right-0 z-[2] w-10 rounded-r-2xl bg-gradient-to-l from-card/95 to-transparent transition-opacity duration-300',
             canScrollRight ? 'opacity-100' : 'opacity-0',
           )}
         />
@@ -228,8 +233,7 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
           )}
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
-          {/* py extra: hueco para el glow neón (overflow-x recorta el eje Y en CSS) */}
-          <ul className="flex w-max gap-4 py-4 pl-2 pr-8 sm:gap-5 sm:pr-10">
+          <ul className="flex w-max items-start gap-5 px-1 py-3 sm:gap-6 sm:px-2 sm:py-4">
             {activeObjectives.map((obj) => {
               const meta = getCategoryMeta(obj.id)
               const completed = getCompleted(obj.id)
@@ -237,12 +241,12 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
               const level = getCurrentLevel(completed)
               const block = getLevelBlockDays(completed)
               const Icon = obj.icon
-              const inFirstCycle = completed < HABIT_CHALLENGE_DAYS
+              const progressLabel = inFirstCycleLabel(completed)
 
               return (
                 <li
                   key={obj.id}
-                  className="flex w-[88px] shrink-0 snap-start flex-col items-center gap-2 overflow-visible sm:w-[96px]"
+                  className="flex w-[92px] shrink-0 snap-start flex-col items-center gap-3 overflow-visible sm:w-[100px]"
                 >
                   <button
                     type="button"
@@ -256,26 +260,26 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
                     <NeonProgressRing
                       progress={block.ratio}
                       color={meta.color}
-                      size={80}
-                      strokeWidth={3.5}
+                      size={84}
+                      strokeWidth={3.25}
                     >
                       <span
                         className={cn(
-                          'flex size-full items-center justify-center rounded-full border bg-card',
+                          'flex size-full items-center justify-center rounded-full border bg-background/90',
                           doneToday
-                            ? 'border-neon-yellow/35 bg-neon-yellow/10'
+                            ? 'border-neon-yellow/40 bg-neon-yellow/10'
                             : 'border-white/10',
                         )}
                         style={{ '--glow': meta.color } as CSSProperties}
                       >
                         {doneToday ? (
                           <Flame
-                            className="size-6 fill-neon-yellow text-neon-yellow drop-shadow-[0_0_10px_var(--color-neon-yellow)] sm:size-7"
+                            className="size-7 fill-neon-yellow text-neon-yellow drop-shadow-[0_0_10px_var(--color-neon-yellow)]"
                             aria-hidden="true"
                           />
                         ) : (
                           <Icon
-                            className="size-6 text-[var(--glow)] [filter:drop-shadow(0_0_8px_var(--glow))] sm:size-7"
+                            className="size-7 text-[var(--glow)] [filter:drop-shadow(0_0_8px_var(--glow))]"
                             aria-hidden="true"
                           />
                         )}
@@ -289,75 +293,66 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
                     ) : null}
                   </button>
 
-                  <div className="flex flex-col items-center gap-0.5 text-center">
-                    <span className="line-clamp-1 text-[11px] font-medium leading-tight text-foreground">
-                      <span aria-hidden="true">{obj.emoji} </span>
+                  <div className="flex w-full flex-col items-center gap-1 text-center">
+                    <span className="line-clamp-1 text-[12px] font-semibold leading-tight text-foreground">
                       {obj.short}
                     </span>
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                    <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
                       Nv.{level}
-                      {doneToday ? ' · 🔥' : ''}
+                      {doneToday ? ' · hoy' : ''}
                     </span>
                     <span
-                      className="font-mono text-[10px] tabular-nums tracking-tight"
+                      className="font-mono text-[10px] tabular-nums tracking-tight text-muted-foreground"
                       style={{ color: meta.color } as CSSProperties}
                     >
-                      {block.done}/{block.total} días
+                      {progressLabel}
                     </span>
-                    {inFirstCycle ? (
-                      <span className="font-mono text-[9px] text-white/40">
-                        {completed}/{HABIT_CHALLENGE_DAYS} días
-                      </span>
-                    ) : null}
                   </div>
                 </li>
               )
             })}
 
-            <li className="flex w-[88px] shrink-0 snap-start flex-col items-center gap-2 overflow-visible sm:w-[96px]">
+            <li className="flex w-[92px] shrink-0 snap-start flex-col items-center gap-3 overflow-visible sm:w-[100px]">
               <button
                 type="button"
-                onPointerDown={(e) => {
-                  // Evita que el carrusel capture el pointer y se trague el click
-                  e.stopPropagation()
-                }}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation()
                   onAddGoalClick()
                 }}
                 aria-label="Añadir o crear objetivos"
                 className={cn(
-                  'group relative z-[3] flex size-20 items-center justify-center overflow-visible rounded-full',
-                  'border border-dashed border-neon-cyan/55 bg-neon-cyan/5',
-                  'shadow-[0_0_28px_-6px_var(--color-neon-cyan)]',
-                  'transition-all duration-300 hover:scale-[1.04] hover:border-neon-cyan hover:bg-neon-cyan/10',
+                  'group relative z-[3] flex size-[84px] items-center justify-center overflow-visible rounded-full',
+                  'border border-dashed border-neon-cyan/45 bg-neon-cyan/[0.06]',
+                  'transition-all duration-300 hover:scale-[1.04] hover:border-neon-cyan/70 hover:bg-neon-cyan/10',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                 )}
               >
                 <Plus
-                  className="size-8 text-neon-cyan drop-shadow-[0_0_10px_var(--color-neon-cyan)] transition-transform group-hover:rotate-90"
+                  className="size-8 text-neon-cyan/90 transition-transform group-hover:rotate-90"
                   aria-hidden="true"
                 />
               </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onAddGoalClick()
-                }}
-                className="flex flex-col items-center gap-0.5 text-center focus-visible:outline-none"
-              >
-                <span className="text-[11px] font-medium text-foreground">Añadir</span>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan">
-                  + Explorar
+              <div className="flex flex-col items-center gap-1 text-center">
+                <span className="text-[12px] font-semibold text-foreground">Añadir</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-neon-cyan/80">
+                  Explorar
                 </span>
-              </button>
+              </div>
             </li>
 
-            <li aria-hidden="true" className="w-6 shrink-0 snap-end sm:w-8" />
+            <li aria-hidden="true" className="w-4 shrink-0 snap-end sm:w-6" />
           </ul>
         </div>
       </div>
     </section>
   )
+}
+
+function inFirstCycleLabel(completed: number) {
+  if (completed < HABIT_CHALLENGE_DAYS) {
+    return `${completed}/${HABIT_CHALLENGE_DAYS}`
+  }
+  const block = getLevelBlockDays(completed)
+  return `${block.done}/${block.total}`
 }

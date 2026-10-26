@@ -17,7 +17,13 @@ const CTA_BASE =
 const CATEGORY_ID = 'actividad-fisica' as const
 
 export function CaptureBanner() {
-  const { getCompleted, completeDay } = useHabitProgress()
+  const {
+    getCompleted,
+    completeDay,
+    canValidateToday,
+    dailyValidationMessage,
+    hasCompletedDailyHabit,
+  } = useHabitProgress()
   const completed = getCompleted(CATEGORY_ID)
   const currentDay = getCurrentDay(completed)
   const level = getCurrentLevel(completed)
@@ -28,11 +34,18 @@ export function CaptureBanner() {
 
   const [open, setOpen] = useState(false)
   const [result, setResult] = useState<CaptureResult | null>(null)
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
 
   function handleConfirm(next: CaptureResult) {
     if (!next.valid) return
-    completeDay(CATEGORY_ID)
+    const completion = completeDay(CATEGORY_ID)
+    if (!completion.ok) {
+      setBlockedMessage(completion.message)
+      window.setTimeout(() => setBlockedMessage(null), 5600)
+      return
+    }
     setResult(next)
+    setBlockedMessage(null)
   }
 
   return (
@@ -112,19 +125,40 @@ export function CaptureBanner() {
             </li>
           </ul>
 
+          {blockedMessage || (hasCompletedDailyHabit && !result?.valid) ? (
+            <p
+              role="status"
+              className="rounded-2xl border border-neon-yellow/35 bg-neon-yellow/10 px-3 py-2 text-center text-xs leading-relaxed text-neon-yellow"
+            >
+              {blockedMessage ?? dailyValidationMessage}
+            </p>
+          ) : null}
+
           <button
             type="button"
             onClick={() => {
+              if (!canValidateToday()) {
+                setBlockedMessage(dailyValidationMessage)
+                window.setTimeout(() => setBlockedMessage(null), 5600)
+                return
+              }
               setResult(null)
+              setBlockedMessage(null)
               setOpen(true)
             }}
+            disabled={hasCompletedDailyHabit && !result?.valid}
             className={
-              result?.valid
-                ? `${CTA_BASE} border border-neon-lime/60 bg-neon-lime/10 text-neon-lime shadow-[0_0_24px_-6px_var(--color-neon-lime)] hover:scale-[1.02]`
+              result?.valid || hasCompletedDailyHabit
+                ? `${CTA_BASE} border border-neon-lime/60 bg-neon-lime/10 text-neon-lime shadow-[0_0_24px_-6px_var(--color-neon-lime)] disabled:cursor-not-allowed disabled:opacity-70`
                 : `${CTA_BASE} bg-neon-cyan text-background shadow-[0_0_32px_-4px_var(--color-neon-cyan)] hover:scale-[1.02] hover:shadow-[0_0_40px_-2px_var(--color-neon-cyan)]`
             }
           >
-            {result?.valid ? (
+            {hasCompletedDailyHabit && !result?.valid ? (
+              <>
+                <Check className="size-4" aria-hidden="true" />
+                Hábito de hoy completado
+              </>
+            ) : result?.valid ? (
               <>
                 <Camera className="size-4" aria-hidden="true" />
                 Validar día {currentDay}

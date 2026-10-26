@@ -19,6 +19,11 @@ type ShareAchievementProps = {
   className?: string
   /** Compact mode for embedding in success sheets */
   compact?: boolean
+  /**
+   * primary: CTAs llamativos (pantallas de logro).
+   * secondary: compartir/descargar en segundo plano (tras validar foto).
+   */
+  emphasis?: 'primary' | 'secondary'
 }
 
 const CARD_W = 1080
@@ -57,7 +62,7 @@ async function buildStoryBlob(data: ShareAchievementData): Promise<Blob | null> 
   // Logo / brand
   ctx.fillStyle = '#00f0ff'
   ctx.font = '700 42px system-ui, sans-serif'
-  ctx.fillText('Kore', 96, 140)
+  ctx.fillText('FotoHabit', 96, 140)
   ctx.fillStyle = 'rgba(188, 19, 254, 0.95)'
   ctx.font = '600 28px ui-monospace, monospace'
   ctx.fillText(HABIT_MOTTO.toUpperCase(), 96, 190)
@@ -91,7 +96,7 @@ async function buildStoryBlob(data: ShareAchievementData): Promise<Blob | null> 
     ctx.fillStyle = '#fff'
     ctx.font = '600 48px system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(data.title ?? 'Logro Kore', photoX + photoW / 2, photoTop + photoH / 2)
+    ctx.fillText(data.title ?? 'Logro FotoHabit', photoX + photoW / 2, photoTop + photoH / 2)
     ctx.textAlign = 'left'
   }
   ctx.restore()
@@ -119,7 +124,7 @@ async function buildStoryBlob(data: ShareAchievementData): Promise<Blob | null> 
 
   ctx.fillStyle = 'rgba(255,255,255,0.45)'
   ctx.font = '500 28px ui-monospace, monospace'
-  ctx.fillText('Kore Habits', 96, CARD_H - 100)
+  ctx.fillText('FotoHabit', 96, CARD_H - 100)
 
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95)
@@ -168,17 +173,23 @@ function wrapText(
 }
 
 function shareUrl() {
-  if (typeof window === 'undefined') return 'https://kore.habits'
+  if (typeof window === 'undefined') return 'https://fotohabit.app'
   return window.location.origin
 }
 
-export function ShareAchievement({ data, className, compact }: ShareAchievementProps) {
+export function ShareAchievement({
+  data,
+  className,
+  compact = false,
+  emphasis = 'primary',
+}: ShareAchievementProps) {
   const [busy, setBusy] = useState<'share' | 'download' | 'link' | null>(null)
   const [copied, setCopied] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
+  const secondary = emphasis === 'secondary'
 
-  const shareText = `${data.title ?? 'Mi logro en Kore'} · ${data.habit} · Nivel ${data.level} · ${data.streakDays} días 🔥\n${HABIT_MOTTO}\n${shareUrl()}`
+  const shareText = `${data.title ?? 'Mi logro en FotoHabit'} · ${data.habit} · Nivel ${data.level} · ${data.streakDays} días 🔥\n${HABIT_MOTTO}\n${shareUrl()}`
 
   const runShare = useCallback(async () => {
     setBusy('share')
@@ -187,20 +198,20 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
       const blob = await buildStoryBlob(data)
       if (!blob) throw new Error('No se pudo generar la tarjeta')
 
-      const file = new File([blob], `kore-logro-${Date.now()}.png`, { type: 'image/png' })
+      const file = new File([blob], `fotohabit-logro-${Date.now()}.png`, { type: 'image/png' })
 
       if (typeof navigator !== 'undefined' && navigator.share) {
         const canFiles =
           !navigator.canShare || navigator.canShare({ files: [file] })
         if (canFiles) {
           await navigator.share({
-            title: 'Kore Habits · Logro',
+            title: 'FotoHabit · Logro',
             text: shareText,
             files: [file],
           })
         } else {
           await navigator.share({
-            title: 'Kore Habits · Logro',
+            title: 'FotoHabit · Logro',
             text: shareText,
             url: shareUrl(),
           })
@@ -236,7 +247,7 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `kore-logro-${Date.now()}.png`
+      a.download = `fotohabit-logro-${Date.now()}.png`
       a.click()
       URL.revokeObjectURL(url)
       setNotice('Foto guardada')
@@ -269,8 +280,11 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
       <div
         ref={previewRef}
         className={cn(
-          'relative mx-auto w-full overflow-hidden rounded-3xl border border-neon-cyan/35 bg-zinc-950 shadow-[0_0_40px_-12px_var(--color-neon-cyan)]',
-          compact ? 'max-w-[220px] aspect-[9/16]' : 'max-w-[260px] aspect-[9/16]',
+          'relative mx-auto w-full overflow-hidden rounded-3xl border bg-zinc-950',
+          secondary
+            ? 'max-w-[140px] aspect-[9/16] border-white/10 opacity-90'
+            : 'border-neon-cyan/35 shadow-[0_0_40px_-12px_var(--color-neon-cyan)]',
+          !secondary && (compact ? 'max-w-[220px] aspect-[9/16]' : 'max-w-[260px] aspect-[9/16]'),
         )}
       >
         {data.photoUrl ? (
@@ -287,7 +301,7 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
         <div className="absolute inset-0 flex flex-col justify-between p-3.5">
           <div>
             <p className="text-sm font-bold text-neon-cyan [text-shadow:0_0_12px_rgba(0,240,255,0.5)]">
-              Kore
+              FotoHabit
             </p>
             <p className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-neon-fuchsia">
               {HABIT_MOTTO}
@@ -304,7 +318,7 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
               <Flame className="size-3 fill-neon-yellow" aria-hidden="true" />
               {data.streakDays} días · Nv.{data.level}
             </p>
-            <p className="font-mono text-[8px] text-white/50">Kore Habits</p>
+            <p className="font-mono text-[8px] text-white/50">FotoHabit</p>
           </div>
         </div>
       </div>
@@ -313,14 +327,19 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
         type="button"
         onClick={() => void runShare()}
         disabled={busy !== null}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-neon-cyan text-sm font-semibold text-background shadow-[0_0_28px_-6px_var(--color-neon-cyan)] transition-transform hover:scale-[1.01] disabled:opacity-60"
+        className={cn(
+          'inline-flex w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-transform disabled:opacity-60',
+          secondary
+            ? 'h-10 border border-white/15 bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-foreground'
+            : 'h-12 bg-neon-cyan text-background shadow-[0_0_28px_-6px_var(--color-neon-cyan)] hover:scale-[1.01]',
+        )}
       >
         {busy === 'share' ? (
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         ) : (
           <Share2 className="size-4" aria-hidden="true" />
         )}
-        Compartir logro
+        {secondary ? 'Compartir externo' : 'Compartir logro'}
       </button>
 
       <div className="grid grid-cols-2 gap-2">
@@ -328,20 +347,30 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
           type="button"
           onClick={() => void runDownload()}
           disabled={busy !== null}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-white/5 text-xs font-semibold text-foreground disabled:opacity-60"
+          className={cn(
+            'inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border text-xs font-semibold disabled:opacity-60',
+            secondary
+              ? 'border-white/10 bg-transparent text-muted-foreground'
+              : 'border-white/15 bg-white/5 text-foreground',
+          )}
         >
           {busy === 'download' ? (
             <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
           ) : (
             <Download className="size-3.5" aria-hidden="true" />
           )}
-          Descargar foto
+          Descargar
         </button>
         <button
           type="button"
           onClick={() => void runCopyLink()}
           disabled={busy !== null}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-white/5 text-xs font-semibold text-foreground disabled:opacity-60"
+          className={cn(
+            'inline-flex h-10 items-center justify-center gap-1.5 rounded-2xl border text-xs font-semibold disabled:opacity-60',
+            secondary
+              ? 'border-white/10 bg-transparent text-muted-foreground'
+              : 'border-white/15 bg-white/5 text-foreground',
+          )}
         >
           {copied ? (
             <Check className="size-3.5 text-neon-lime" aria-hidden="true" />
@@ -350,7 +379,7 @@ export function ShareAchievement({ data, className, compact }: ShareAchievementP
           ) : (
             <Copy className="size-3.5" aria-hidden="true" />
           )}
-          Copiar enlace
+          Copiar
         </button>
       </div>
 

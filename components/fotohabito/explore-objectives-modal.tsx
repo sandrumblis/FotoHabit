@@ -300,7 +300,7 @@ export function ExploreObjectivesModal({
     if (isProCategory(id) && !isPro) {
       openProFeature(
         meta.title,
-        'Este objetivo forma parte de Kore PRO. Desbloquéalo con una suscripción.',
+        'Este objetivo forma parte de FotoHabit PRO. Desbloquéalo con una suscripción.',
         'category',
       )
       return
@@ -317,7 +317,7 @@ export function ExploreObjectivesModal({
       if (result.reason === 'limit') {
         openProFeature(
           'Objetivos ilimitados',
-          `Ya tienes ${activeCategoryIds.length} de ${freeActiveLimit} objetivos activos en el plan gratuito. Pasa a Kore PRO para gestionar todos a la vez.`,
+          `Ya tienes ${activeCategoryIds.length} de ${freeActiveLimit} objetivos activos en el plan gratuito. Pasa a FotoHabit PRO para gestionar todos a la vez.`,
           'limit',
         )
         return
@@ -392,7 +392,7 @@ export function ExploreObjectivesModal({
                 onClick={() =>
                   openProFeature(
                     'Crea un objetivo',
-                    'Diseña hábitos personalizados con Kore PRO.',
+                    'Diseña hábitos personalizados con FotoHabit PRO.',
                     'feature',
                   )
                 }
@@ -407,7 +407,7 @@ export function ExploreObjectivesModal({
                 onClick={() =>
                   openProFeature(
                     'Retos en grupo con amigos',
-                    'Invita a amigos y compartid rachas con Kore PRO.',
+                    'Invita a amigos y compartid rachas con FotoHabit PRO.',
                     'feature',
                   )
                 }

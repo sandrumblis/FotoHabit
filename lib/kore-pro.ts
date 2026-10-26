@@ -47,7 +47,7 @@ export const KORE_PRO_FEATURES = [
 ] as const
 
 export const KORE_FREE_FEATURES = [
-  'Feed de la comunidad Kore',
+  'Feed de la comunidad FotoHabit',
   `Hasta ${FREE_ACTIVE_OBJECTIVES_LIMIT} objetivos activos`,
   'Validación por IA con foto',
   'Perfiles básicos y rachas personales',

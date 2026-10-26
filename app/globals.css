@@ -206,3 +206,21 @@
 .animate-neon-border {
   animation: neon-border-pulse 2.4s ease-in-out infinite;
 }
+
+@keyframes fotohabit-scan {
+  0% {
+    top: 12%;
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    top: 88%;
+    opacity: 0.25;
+  }
+}
+
+.animate-fotohabit-scan {
+  animation: fotohabit-scan 1.6s ease-in-out infinite;
+}

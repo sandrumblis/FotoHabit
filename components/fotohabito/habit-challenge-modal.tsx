@@ -85,7 +85,7 @@ export function HabitChallengeModal({
         aria-modal="true"
         aria-labelledby={titleId}
         style={{ '--glow': meta.color } as CSSProperties}
-        className="relative z-10 flex max-h-[min(94dvh,820px)] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-[color-mix(in_oklab,var(--glow)_45%,transparent)] bg-card shadow-[0_0_60px_-12px_var(--glow)]"
+        className="relative z-10 flex max-h-[min(94dvh,820px)] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-[color-mix(in_oklab,var(--glow)_45%,transparent)] bg-card shadow-[0_0_60px_-12px_var(--glow)]"
       >
         <div
           aria-hidden="true"
