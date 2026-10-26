@@ -80,17 +80,12 @@ function HeaderUserChip() {
         aria-label="Abrir ajustes de perfil"
         title="Ajustes de perfil"
       >
-        <div className="relative">
-          <CommunityAvatar
-            initials={initials || 'FH'}
-            src={avatarUrl}
-            size="sm"
-            accent="cyan"
-          />
-          <span className="absolute -bottom-0.5 -right-0.5 rounded-full border border-background bg-neon-purple px-1.5 font-mono text-[8px] font-bold leading-4 text-white">
-            {level}
-          </span>
-        </div>
+        <CommunityAvatar
+          initials={initials || 'FH'}
+          src={avatarUrl}
+          size="sm"
+          accent="cyan"
+        />
         <div className="hidden min-w-0 flex-col leading-tight lg:flex">
           <span className="max-w-[6.5rem] truncate text-xs font-medium text-foreground">
             {displayName}

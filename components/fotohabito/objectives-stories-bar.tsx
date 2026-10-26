@@ -60,8 +60,6 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
     getCompleted,
     isTodayValidated,
     activeCategoryIds,
-    hasCompletedDailyHabit,
-    dailyValidationMessage,
   } = useHabitProgress()
   const scrollerRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -187,10 +185,8 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
           </h2>
           <p className="max-w-[18rem] text-pretty text-xs leading-relaxed text-muted-foreground sm:max-w-sm">
             {activeObjectives.length === 0
-              ? 'Elige un hábito y valida una foto al día para subir de nivel.'
-              : hasCompletedDailyHabit
-                ? dailyValidationMessage
-                : 'Toca un anillo para abrir el reto de hoy.'}
+              ? 'Elige un hábito y valida una foto al día por cada objetivo.'
+              : 'Toca un anillo para abrir el reto de hoy. Cada objetivo se valida una vez al día.'}
           </p>
         </div>
 

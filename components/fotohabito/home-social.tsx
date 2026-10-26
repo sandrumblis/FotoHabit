@@ -6,15 +6,14 @@ import { CommunityAvatar } from './community-avatar'
 import { CommunityFireButton } from './community-fire-button'
 import { CommunityProfileBanner, type ProfileMetricKey } from './community-profile-banner'
 import { CommunityProfileModal } from './community-profile-modal'
-import {
-  CommunityConnectionsModal,
-  type ConnectionsMode,
-} from './community-connections-modal'
+import { CommunityConnectionsModal } from './community-connections-modal'
+import { NetworkPanel } from './network-panel'
 import { ObjectivesStoriesBar } from './objectives-stories-bar'
 import { useAuth } from './auth-context'
 import { useExploreObjectives } from './explore-objectives-context'
 import { ExploreObjectivesModal } from './explore-objectives-modal'
 import { useKorePro } from './kore-pro-context'
+import { useNetwork } from './network-context'
 import { useProfileSettings } from './profile-settings-context'
 import { HabitChallengeModal } from './habit-challenge-modal'
 import {
@@ -55,7 +54,7 @@ import { cn } from '@/lib/utils'
 
 const PRIMARY_HABIT: HabitCategoryId = 'actividad-fisica'
 
-type CommunityTab = 'global' | 'following' | 'profile'
+type CommunityTab = 'global' | 'network' | 'profile'
 
 type CelebrationState = {
   kind: CelebrationKind
@@ -67,7 +66,7 @@ type CelebrationState = {
 
 const COMMUNITY_TABS: Array<{ id: CommunityTab; label: string }> = [
   { id: 'global', label: 'Feed Global' },
-  { id: 'following', label: 'Siguiendo' },
+  { id: 'network', label: 'Mi Red' },
   { id: 'profile', label: 'Mi Perfil' },
 ]
 
@@ -81,9 +80,10 @@ export function HomeSocial() {
     profileRevision,
   } = useProfileSettings()
   const mockMe = getCurrentUser()
+  const { connectedIds, snapshot: networkSnapshot, incomingCount } = useNetwork()
   const me = useMemo((): CommunityUser => {
     if (!authUser) return mockMe
-    // Perfil real limpio: sin rachas/seguidores inventados del mock de comunidad.
+    // Perfil real limpio: sin rachas inventadas del mock de comunidad.
     return {
       ...mockMe,
       id: authUser.id,
@@ -94,21 +94,30 @@ export function HomeSocial() {
       streak: 0,
       primaryHabit: 'Elige tu primer hábito',
       postsCount: 0,
-      followersCount: 0,
-      followingCount: 0,
+      followersCount: networkSnapshot.accepted.length,
+      followingCount: networkSnapshot.accepted.length,
       likesCount: 0,
-      followerIds: [],
-      followingIds: [],
+      followerIds: networkSnapshot.connectedIds,
+      followingIds: networkSnapshot.connectedIds,
       isSelf: true,
     }
-  }, [authUser, mockMe, displayName, avatarUrl, initials, profileRevision])
+  }, [
+    authUser,
+    mockMe,
+    displayName,
+    avatarUrl,
+    initials,
+    profileRevision,
+    networkSnapshot.accepted.length,
+    networkSnapshot.connectedIds,
+  ])
 
   const {
     getCompleted,
     completeDay,
     canValidateToday,
     dailyValidationMessage,
-    hasCompletedDailyHabit,
+    isTodayValidated,
     activeCategoryIds,
     deactivateCategory,
   } = useHabitProgress()
@@ -138,6 +147,7 @@ export function HomeSocial() {
           ? getCategoryMeta(primaryId).title
           : 'Elige tu primer hábito',
       postsCount: getPostsByUserId(me.id).length,
+      networkCount: networkSnapshot.accepted.length,
       likesCount: posts.filter((p) => p.userId === me.id && p.neonFire).length,
     }),
     [
@@ -147,6 +157,7 @@ export function HomeSocial() {
       getPostsByUserId,
       me.id,
       posts,
+      networkSnapshot.accepted.length,
     ],
   )
 
@@ -155,7 +166,6 @@ export function HomeSocial() {
   const [profileUser, setProfileUser] = useState<CommunityUser | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [connectionsOpen, setConnectionsOpen] = useState(false)
-  const [connectionsMode, setConnectionsMode] = useState<ConnectionsMode>('followers')
   const [connectionsOwner, setConnectionsOwner] = useState<CommunityUser | null>(null)
 
   const [roadmapCategory, setRoadmapCategory] = useState<HabitCategoryId | null>(null)
@@ -173,28 +183,24 @@ export function HomeSocial() {
 
   const openProfileById = useCallback(
     (userId: string) => {
-      const user = getUser(userId)
+      const fromNetwork = networkSnapshot.accepted.find((c) => c.peer.id === userId)?.peer
+      const user = fromNetwork ?? getUser(userId)
       if (!user) return
       setConnectionsOpen(false)
       openProfile(user)
     },
-    [openProfile],
+    [openProfile, networkSnapshot.accepted],
   )
 
-  const openConnections = useCallback((owner: CommunityUser, mode: ConnectionsMode) => {
+  const openConnections = useCallback((owner: CommunityUser) => {
     setConnectionsOwner(owner)
-    setConnectionsMode(mode)
     setConnectionsOpen(true)
   }, [])
 
   const handleMetricClick = useCallback(
     (metric: ProfileMetricKey) => {
-      if (metric === 'followers') {
-        openConnections(me, 'followers')
-        return
-      }
-      if (metric === 'following') {
-        openConnections(me, 'following')
+      if (metric === 'network') {
+        openConnections(me)
         return
       }
       openProfile({ ...me, ...profileOverrides })
@@ -212,7 +218,7 @@ export function HomeSocial() {
   }, [])
 
   function openCaptureForCategory(categoryId: HabitCategoryId) {
-    if (!canValidateToday()) {
+    if (!canValidateToday(categoryId)) {
       setToast(dailyValidationMessage)
       window.setTimeout(() => setToast(null), 5600)
       return
@@ -317,19 +323,17 @@ export function HomeSocial() {
   const profileForModal =
     profileUser?.id === me.id ? { ...me, ...profileOverrides } : profileUser
 
-  const followingSet = useMemo(() => new Set(me.followingIds), [me.followingIds])
-
   const feedPosts = useMemo(() => {
-    if (communityTab === 'following') {
+    if (communityTab === 'network') {
       return posts.filter(
-        (p) => p.userId === me.id || followingSet.has(p.userId),
+        (p) => p.userId === me.id || connectedIds.has(p.userId),
       )
     }
     if (communityTab === 'profile') {
       return posts.filter((p) => p.userId === me.id)
     }
     return posts
-  }, [communityTab, posts, me.id, followingSet])
+  }, [communityTab, posts, me.id, connectedIds])
 
   return (
     <div className="flex flex-col gap-6">
@@ -358,6 +362,7 @@ export function HomeSocial() {
       >
         {COMMUNITY_TABS.map((tab) => {
           const active = communityTab === tab.id
+          const showBadge = tab.id === 'network' && incomingCount > 0
           return (
             <button
               key={tab.id}
@@ -366,13 +371,21 @@ export function HomeSocial() {
               aria-selected={active}
               onClick={() => setCommunityTab(tab.id)}
               className={cn(
-                'h-10 rounded-xl px-2 text-xs font-semibold transition-all sm:text-sm',
+                'relative h-10 rounded-xl px-2 text-xs font-semibold transition-all sm:text-sm',
                 active
                   ? 'bg-neon-cyan/15 text-neon-cyan shadow-[0_0_18px_-8px_var(--color-neon-cyan)]'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {tab.label}
+              {showBadge ? (
+                <span
+                  className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-neon-yellow font-mono text-[9px] font-bold text-background"
+                  aria-label={`${incomingCount} solicitudes pendientes`}
+                >
+                  {incomingCount > 9 ? '9+' : incomingCount}
+                </span>
+              ) : null}
             </button>
           )
         })}
@@ -397,6 +410,10 @@ export function HomeSocial() {
         />
       ) : null}
 
+      {communityTab === 'network' ? (
+        <NetworkPanel onSelectUser={openProfile} />
+      ) : null}
+
       <ObjectivesStoriesBar
         onSelect={(categoryId) => setRoadmapCategory(categoryId)}
         onAddGoalClick={openAddGoal}
@@ -416,8 +433,8 @@ export function HomeSocial() {
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
           {communityTab === 'global'
             ? 'Pruebas de toda la comunidad'
-            : communityTab === 'following'
-              ? 'De quienes sigues'
+            : communityTab === 'network'
+              ? 'Solo conexiones mutuas aceptadas'
               : 'Tus pruebas publicadas'}
         </p>
         <span className="font-mono text-[10px] text-white/40">{feedPosts.length}</span>
@@ -437,8 +454,10 @@ export function HomeSocial() {
 
       {!loading && feedPosts.length === 0 ? (
         <p className="rounded-3xl border border-dashed border-white/10 px-4 py-12 text-center text-sm text-muted-foreground">
-          {communityTab === 'following'
-            ? 'Aún no hay publicaciones de personas que sigues.'
+          {communityTab === 'network'
+            ? connectedIds.size === 0
+              ? 'Cuando aceptéis una conexión mutua, sus publicaciones aparecerán aquí.'
+              : 'Tus conexiones aún no han publicado pruebas.'
             : communityTab === 'profile'
               ? 'Valida un hábito con foto y compártelo para verlo aquí.'
               : 'El feed está vacío por ahora. ¡Sé el primero en publicar!'}
@@ -625,23 +644,21 @@ export function HomeSocial() {
       <CommunityProfileModal
         open={profileOpen}
         user={profileForModal}
+        networkCount={
+          profileForModal?.isSelf ? networkSnapshot.accepted.length : undefined
+        }
         postsOverride={
           profileForModal ? getPostsByUserId(profileForModal.id) : undefined
         }
         onClose={() => setProfileOpen(false)}
-        onOpenFollowers={() => {
+        onOpenNetwork={() => {
           if (!profileForModal) return
-          openConnections(profileForModal, 'followers')
-        }}
-        onOpenFollowing={() => {
-          if (!profileForModal) return
-          openConnections(profileForModal, 'following')
+          openConnections(profileForModal)
         }}
       />
 
       <CommunityConnectionsModal
         open={connectionsOpen}
-        mode={connectionsMode}
         user={connectionsOwner}
         onClose={() => setConnectionsOpen(false)}
         onSelectUser={openProfileById}
@@ -651,12 +668,14 @@ export function HomeSocial() {
         open={roadmapCategory !== null}
         categoryId={roadmapCategory}
         completed={roadmapCategory ? getCompleted(roadmapCategory) : 0}
-        dailyLocked={hasCompletedDailyHabit}
+        dailyLocked={
+          roadmapCategory ? isTodayValidated(roadmapCategory) : false
+        }
         dailyLockedMessage={dailyValidationMessage}
         onClose={() => setRoadmapCategory(null)}
         onCapture={() => {
           if (!roadmapCategory) return
-          if (hasCompletedDailyHabit) {
+          if (!canValidateToday(roadmapCategory)) {
             setToast(dailyValidationMessage)
             window.setTimeout(() => setToast(null), 5600)
             return

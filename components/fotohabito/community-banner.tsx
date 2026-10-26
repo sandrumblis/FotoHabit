@@ -3,8 +3,8 @@ import { Flame, Images, Users } from 'lucide-react'
 
 const METRICS = [
   {
-    label: 'Seguidores',
-    value: '128',
+    label: 'Mi Red',
+    value: '12',
     icon: Users,
     accent: 'text-neon-cyan',
     ring: 'border-neon-cyan/30 bg-neon-cyan/10',

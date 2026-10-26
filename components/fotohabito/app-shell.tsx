@@ -10,6 +10,7 @@ import { ExploreObjectivesProvider } from './explore-objectives-context'
 import { HabitProgressProvider } from './habit-progress-context'
 import { HomeSocial } from './home-social'
 import { KoreProProvider, useKorePro } from './kore-pro-context'
+import { NetworkProvider } from './network-context'
 import { NewUserOnboarding } from './new-user-onboarding'
 import { ProfileSettingsProvider } from './profile-settings-context'
 import { ProfileSettingsModal } from './profile-settings-modal'
@@ -49,13 +50,15 @@ function AuthenticatedApp() {
     <HabitProgressProvider>
       <SocialFeedProvider>
         <ProfileSettingsProvider>
-          <KoreProProvider>
-            <ExploreObjectivesProvider>
-              <AppNavProvider>
-                <MainContent />
-              </AppNavProvider>
-            </ExploreObjectivesProvider>
-          </KoreProProvider>
+          <NetworkProvider>
+            <KoreProProvider>
+              <ExploreObjectivesProvider>
+                <AppNavProvider>
+                  <MainContent />
+                </AppNavProvider>
+              </ExploreObjectivesProvider>
+            </KoreProProvider>
+          </NetworkProvider>
         </ProfileSettingsProvider>
       </SocialFeedProvider>
     </HabitProgressProvider>

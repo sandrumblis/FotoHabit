@@ -6,10 +6,7 @@ import { CommunityAvatar } from './community-avatar'
 import { CommunityFireButton } from './community-fire-button'
 import { CommunityProfileBanner, type ProfileMetricKey } from './community-profile-banner'
 import { CommunityProfileModal } from './community-profile-modal'
-import {
-  CommunityConnectionsModal,
-  type ConnectionsMode,
-} from './community-connections-modal'
+import { CommunityConnectionsModal } from './community-connections-modal'
 import {
   ACCENT_STYLES,
   getCurrentUser,
@@ -28,7 +25,6 @@ export function CommunityFeed() {
   const [profileUser, setProfileUser] = useState<CommunityUser | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [connectionsOpen, setConnectionsOpen] = useState(false)
-  const [connectionsMode, setConnectionsMode] = useState<ConnectionsMode>('followers')
   const [connectionsOwner, setConnectionsOwner] = useState<CommunityUser | null>(null)
 
   const openProfile = useCallback((user: CommunityUser) => {
@@ -46,9 +42,8 @@ export function CommunityFeed() {
     [openProfile],
   )
 
-  const openConnections = useCallback((owner: CommunityUser, mode: ConnectionsMode) => {
+  const openConnections = useCallback((owner: CommunityUser) => {
     setConnectionsOwner(owner)
-    setConnectionsMode(mode)
     setConnectionsOpen(true)
   }, [])
 
@@ -63,15 +58,10 @@ export function CommunityFeed() {
 
   const handleMetricClick = useCallback(
     (metric: ProfileMetricKey) => {
-      if (metric === 'followers') {
-        openConnections(me, 'followers')
+      if (metric === 'network') {
+        openConnections(me)
         return
       }
-      if (metric === 'following') {
-        openConnections(me, 'following')
-        return
-      }
-      // Publicaciones / Fuegos → perfil propio con grid
       openProfile(me)
     },
     [me, openConnections, openProfile],
@@ -85,7 +75,7 @@ export function CommunityFeed() {
           Comunidad
         </h1>
         <p className="max-w-xl text-pretty text-sm text-muted-foreground">
-          Pruebas publicadas por tus seguidores. Inspírate, celebra rachas y mantén el ritmo.
+          Pruebas de tu red mutua. Inspírate, celebra rachas y mantén el ritmo.
         </p>
       </div>
 
@@ -194,19 +184,14 @@ export function CommunityFeed() {
         open={profileOpen}
         user={profileUser}
         onClose={() => setProfileOpen(false)}
-        onOpenFollowers={() => {
+        onOpenNetwork={() => {
           if (!profileUser) return
-          openConnections(profileUser, 'followers')
-        }}
-        onOpenFollowing={() => {
-          if (!profileUser) return
-          openConnections(profileUser, 'following')
+          openConnections(profileUser)
         }}
       />
 
       <CommunityConnectionsModal
         open={connectionsOpen}
-        mode={connectionsMode}
         user={connectionsOwner}
         onClose={() => setConnectionsOpen(false)}
         onSelectUser={openProfileById}

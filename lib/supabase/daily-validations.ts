@@ -2,22 +2,24 @@ import { createClient } from './client'
 import { isValidDateKey, localTodayKey } from '@/lib/daily-validation'
 
 export type DailyValidationStatus = {
+  /** true si ese categoryId concreto ya se validó hoy (o si hay alguno y no se pasó id). */
   completedToday: boolean
   date: string
   categoryId: string | null
-  source: 'daily_validations' | 'posts' | 'none' | 'error'
+  categories: string[]
+  source: 'daily_validations' | 'none' | 'error'
 }
 
 /**
- * Comprueba en Supabase si el usuario ya tiene una validación exitosa hoy.
- * Preferencia: tabla daily_validations; fallback: posts del día.
+ * Lista / comprueba validaciones del día por objetivo.
  */
 export async function fetchDailyValidationStatus(
   userId: string,
   date = localTodayKey(),
+  categoryId?: string | null,
 ): Promise<DailyValidationStatus> {
   if (!userId || !isValidDateKey(date)) {
-    return { completedToday: false, date, categoryId: null, source: 'none' }
+    return { completedToday: false, date, categoryId: null, categories: [], source: 'none' }
   }
 
   const supabase = createClient()
@@ -25,80 +27,63 @@ export async function fetchDailyValidationStatus(
   try {
     const { data, error } = await supabase
       .from('daily_validations')
-      .select('category, validation_date')
+      .select('category')
       .eq('user_id', userId)
       .eq('validation_date', date)
-      .maybeSingle()
 
-    if (!error) {
-      if (data) {
-        return {
-          completedToday: true,
-          date,
-          categoryId: typeof data.category === 'string' ? data.category : null,
-          source: 'daily_validations',
-        }
-      }
-      return { completedToday: false, date, categoryId: null, source: 'daily_validations' }
+    if (error) {
+      console.warn('[daily_validations] select', error.message)
+      return { completedToday: false, date, categoryId: categoryId ?? null, categories: [], source: 'error' }
     }
 
-    // Tabla ausente / RLS: fallback por posts del día (UTC window aproximada).
-    console.warn('[daily_validations] select fallback → posts', error.message)
+    const categories = (data ?? [])
+      .map((r) => (typeof r.category === 'string' ? r.category.trim() : ''))
+      .filter(Boolean)
+
+    const completedToday = categoryId
+      ? categories.includes(categoryId)
+      : categories.length > 0
+
+    return {
+      completedToday,
+      date,
+      categoryId: categoryId ?? null,
+      categories,
+      source: 'daily_validations',
+    }
   } catch (err) {
     console.warn('[daily_validations] select error', err)
-  }
-
-  try {
-    const start = `${date}T00:00:00.000Z`
-    const endDate = new Date(`${date}T00:00:00.000Z`)
-    endDate.setUTCDate(endDate.getUTCDate() + 1)
-    const end = endDate.toISOString()
-
-    const { data: posts, error: postsError } = await supabase
-      .from('posts')
-      .select('id, created_at')
-      .eq('user_id', userId)
-      .gte('created_at', start)
-      .lt('created_at', end)
-      .limit(1)
-
-    if (postsError) {
-      console.warn('[daily_validations] posts fallback error', postsError.message)
-      return { completedToday: false, date, categoryId: null, source: 'error' }
-    }
-
-    const hit = (posts?.length ?? 0) > 0
     return {
-      completedToday: hit,
+      completedToday: false,
       date,
-      categoryId: null,
-      source: hit ? 'posts' : 'none',
+      categoryId: categoryId ?? null,
+      categories: [],
+      source: 'error',
     }
-  } catch (err) {
-    console.warn('[daily_validations] posts fallback exception', err)
-    return { completedToday: false, date, categoryId: null, source: 'error' }
   }
 }
 
-/** Registra la validación del día (idempotente por unique user+date). */
+/** Registra validación de un objetivo (unique user+date+category). */
 export async function recordDailyValidation(input: {
   userId: string
-  categoryId?: string | null
+  categoryId: string
   date?: string
 }): Promise<{ ok: boolean; alreadyExists?: boolean; error?: string }> {
   const date = input.date && isValidDateKey(input.date) ? input.date : localTodayKey()
+  const category = input.categoryId?.trim()
+  if (!category) return { ok: false, error: 'missing_category' }
+
   const supabase = createClient()
 
   try {
     const { error } = await supabase.from('daily_validations').insert({
       user_id: input.userId,
-      category: input.categoryId ?? null,
+      category,
       validation_date: date,
     })
 
     if (!error) return { ok: true }
 
-    // Ya existía (unique) → día ya completado.
     if (
       error.code === '23505' ||
       error.message.toLowerCase().includes('duplicate') ||

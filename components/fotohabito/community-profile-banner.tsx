@@ -1,6 +1,6 @@
 'use client'
 
-import { Flame, Images, Settings2, UserPlus, Users } from 'lucide-react'
+import { Flame, Images, Settings2, Users } from 'lucide-react'
 import { CommunityAvatar } from './community-avatar'
 import { EditableProfileBio } from './editable-profile-bio'
 import { ACCENT_STYLES, type CommunityUser } from '@/lib/community-data'
@@ -19,12 +19,11 @@ const ACCENT_CSS = {
   purple: 'var(--color-neon-purple)',
 } as const
 
-export type ProfileMetricKey = 'posts' | 'followers' | 'following' | 'fires'
+export type ProfileMetricKey = 'posts' | 'network' | 'fires'
 
 export type ProfileMetricOverrides = Partial<{
   postsCount: number
-  followersCount: number
-  followingCount: number
+  networkCount: number
   likesCount: number
   streak: number
   primaryHabit: string
@@ -43,7 +42,7 @@ const METRICS: Array<{
   key: ProfileMetricKey
   label: string
   icon: typeof Images
-  getValue: (u: CommunityUser) => number
+  getValue: (u: CommunityUser & { networkCount?: number }) => number
   accentClass: string
 }> = [
   {
@@ -54,18 +53,11 @@ const METRICS: Array<{
     accentClass: 'text-neon-purple hover:border-neon-purple/50 hover:bg-neon-purple/10',
   },
   {
-    key: 'followers',
-    label: 'Seguidores',
+    key: 'network',
+    label: 'Mi Red',
     icon: Users,
-    getValue: (u) => u.followersCount,
+    getValue: (u) => u.networkCount ?? u.followersCount,
     accentClass: 'text-neon-cyan hover:border-neon-cyan/50 hover:bg-neon-cyan/10',
-  },
-  {
-    key: 'following',
-    label: 'Seguidos',
-    icon: UserPlus,
-    getValue: (u) => u.followingCount,
-    accentClass: 'text-neon-lime hover:border-neon-lime/50 hover:bg-neon-lime/10',
   },
   {
     key: 'fires',
@@ -182,10 +174,13 @@ export function CommunityProfileBanner({
           </div>
         </div>
 
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <ul className="grid grid-cols-3 gap-2 sm:gap-3">
           {METRICS.map((metric) => {
             const Icon = metric.icon
-            const value = metric.getValue(displayUser)
+            const value = metric.getValue({
+              ...displayUser,
+              networkCount: overrides?.networkCount,
+            })
             return (
               <li key={metric.key}>
                 <button

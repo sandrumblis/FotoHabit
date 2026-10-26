@@ -232,7 +232,7 @@ export function HabitChallengeModal({
               role="status"
             >
               {dailyLockedMessage ??
-                'Ya has completado tu hábito de hoy. ¡Vuelve mañana para mantener tu racha!'}
+                'Ya has completado este objetivo hoy. ¡Vuelve mañana para mantener tu racha!'}
             </p>
           ) : null}
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -381,7 +381,7 @@ function RoadmapDayCard({
           ) : null}
           {status === 'current' && dailyLocked ? (
             <p className="mt-3 text-center text-[11px] leading-relaxed text-neon-yellow/90">
-              Validación de hoy completada · vuelve mañana
+              Este objetivo ya está validado hoy · vuelve mañana
             </p>
           ) : null}
         </div>

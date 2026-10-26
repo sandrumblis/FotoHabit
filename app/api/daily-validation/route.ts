@@ -22,75 +22,62 @@ async function getAuthedUserId() {
   return { supabase, userId: data.user.id }
 }
 
-async function hasValidationToday(
+/** Categorías ya validadas hoy (una fila por objetivo). */
+async function listValidatedCategoriesToday(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   date: string,
-): Promise<{ completed: boolean; categoryId: string | null; source: string }> {
+): Promise<{ categories: string[]; source: string }> {
   const { data, error } = await supabase
     .from('daily_validations')
     .select('category')
     .eq('user_id', userId)
     .eq('validation_date', date)
-    .maybeSingle()
 
   if (!error) {
-    return {
-      completed: Boolean(data),
-      categoryId: typeof data?.category === 'string' ? data.category : null,
-      source: 'daily_validations',
-    }
+    const categories = (data ?? [])
+      .map((r) => (typeof r.category === 'string' ? r.category.trim() : ''))
+      .filter(Boolean)
+    return { categories, source: 'daily_validations' }
   }
 
-  // Fallback posts del día si la tabla aún no existe.
-  console.warn('[api/daily-validation] table check fallback', error.message)
-  const start = `${date}T00:00:00.000Z`
-  const endDate = new Date(`${date}T00:00:00.000Z`)
-  endDate.setUTCDate(endDate.getUTCDate() + 1)
-
-  const { data: posts } = await supabase
-    .from('posts')
-    .select('id')
-    .eq('user_id', userId)
-    .gte('created_at', start)
-    .lt('created_at', endDate.toISOString())
-    .limit(1)
-
-  return {
-    completed: (posts?.length ?? 0) > 0,
-    categoryId: null,
-    source: 'posts',
-  }
+  console.warn('[api/daily-validation] list fallback', error.message)
+  return { categories: [], source: 'error' }
 }
 
-/** GET ?date=YYYY-MM-DD → { completedToday, message? } */
+/** GET ?date=YYYY-MM-DD&categoryId=opcional → estado por objetivo o lista del día. */
 export async function GET(request: Request) {
   try {
     const { supabase, userId } = await getAuthedUserId()
     if (!userId) {
-      return json({ completedToday: false, error: 'unauthenticated' }, 401)
+      return json({ completedToday: false, categories: [], error: 'unauthenticated' }, 401)
     }
 
     const url = new URL(request.url)
     const rawDate = url.searchParams.get('date')?.trim() ?? ''
     const date = isValidDateKey(rawDate) ? rawDate : localTodayKey()
+    const categoryId = url.searchParams.get('categoryId')?.trim() || null
 
-    const status = await hasValidationToday(supabase, userId, date)
+    const { categories, source } = await listValidatedCategoriesToday(supabase, userId, date)
+    const completedForCategory = categoryId ? categories.includes(categoryId) : false
 
     return json({
-      completedToday: status.completed,
+      // Compat: completedToday = ese objetivo (si se pide) o si hay alguno.
+      completedToday: categoryId ? completedForCategory : categories.length > 0,
+      categoryCompleted: completedForCategory,
+      categories,
       date,
-      categoryId: status.categoryId,
-      source: status.source,
-      message: status.completed ? DAILY_VALIDATION_BLOCKED_MESSAGE : null,
+      categoryId,
+      source,
+      message: completedForCategory ? DAILY_VALIDATION_BLOCKED_MESSAGE : null,
     })
   } catch (err) {
     console.error('[api/daily-validation GET]', err)
-    return json({ completedToday: false, error: 'server_error' }, 500)
+    return json({ completedToday: false, categories: [], error: 'server_error' }, 500)
   }
 }
 
-/** POST { date?, categoryId? } → registra o rechaza si ya existe. */
+/** POST { date?, categoryId } → registra validación de UN objetivo (idempotente). */
 export async function POST(request: Request) {
   try {
     const { supabase, userId } = await getAuthedUserId()
@@ -114,13 +101,20 @@ export async function POST(request: Request) {
         ? body.categoryId.trim()
         : null
 
-    const existing = await hasValidationToday(supabase, userId, date)
-    if (existing.completed) {
+    if (!categoryId) {
+      return json({ ok: false, error: 'missing_category', message: 'Falta categoryId' }, 400)
+    }
+
+    const { categories } = await listValidatedCategoriesToday(supabase, userId, date)
+    if (categories.includes(categoryId)) {
       return json({
         ok: false,
         alreadyExists: true,
         completedToday: true,
+        categoryCompleted: true,
         date,
+        categoryId,
+        categories,
         message: DAILY_VALIDATION_BLOCKED_MESSAGE,
       })
     }
@@ -141,23 +135,32 @@ export async function POST(request: Request) {
           ok: false,
           alreadyExists: true,
           completedToday: true,
+          categoryCompleted: true,
           date,
+          categoryId,
           message: DAILY_VALIDATION_BLOCKED_MESSAGE,
         })
       }
 
-      // Tabla no migrada: no bloquear el progreso local, pero avisar.
       console.error('[api/daily-validation POST]', error)
       return json({
         ok: false,
         completedToday: false,
         date,
+        categoryId,
         error: error.message,
         skipped: true,
       })
     }
 
-    return json({ ok: true, completedToday: true, date, categoryId })
+    return json({
+      ok: true,
+      completedToday: true,
+      categoryCompleted: true,
+      date,
+      categoryId,
+      categories: [...categories, categoryId],
+    })
   } catch (err) {
     console.error('[api/daily-validation POST]', err)
     return json({ ok: false, error: 'server_error' }, 500)

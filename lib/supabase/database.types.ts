@@ -90,21 +90,21 @@ export type Database = {
         Row: {
           id: string
           user_id: string
-          category: string | null
+          category: string
           validation_date: string
           created_at: string
         }
         Insert: {
           id?: string
           user_id: string
-          category?: string | null
+          category: string
           validation_date: string
           created_at?: string
         }
         Update: {
           id?: string
           user_id?: string
-          category?: string | null
+          category?: string
           validation_date?: string
           created_at?: string
         }

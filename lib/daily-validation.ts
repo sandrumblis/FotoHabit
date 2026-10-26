@@ -1,6 +1,6 @@
-/** Mensaje único de bloqueo diario (UI + API). */
+/** Bloqueo por objetivo: ese hábito ya se validó hoy. */
 export const DAILY_VALIDATION_BLOCKED_MESSAGE =
-  'Ya has completado tu hábito de hoy. ¡Vuelve mañana para mantener tu racha!'
+  'Ya has completado este objetivo hoy. ¡Vuelve mañana para mantener tu racha!'
 
 /** Fecha local YYYY-MM-DD. */
 export function localTodayKey(d = new Date()) {

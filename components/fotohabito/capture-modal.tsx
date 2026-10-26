@@ -16,6 +16,7 @@ import {
 import { ShareAchievement } from './share-achievement'
 import { useHabitProgress } from './habit-progress-context'
 import { localTodayKey } from '@/lib/daily-validation'
+import type { HabitCategoryId } from '@/lib/habit-challenges'
 import { getLevelForDay } from '@/lib/habit-levels'
 import { cn } from '@/lib/utils'
 
@@ -55,7 +56,7 @@ type Step = 'camera' | 'preview' | 'scanning' | 'success' | 'error'
 type FacingMode = 'environment' | 'user'
 
 export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureModalProps) {
-  const { canValidateToday, dailyValidationMessage, hasCompletedDailyHabit } = useHabitProgress()
+  const { canValidateToday, dailyValidationMessage, isTodayValidated } = useHabitProgress()
   const titleId = useId()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -250,7 +251,8 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     const file = fileRef.current
     if (!previewUrl || !fileName || !file) return
 
-    if (!canValidateToday() || hasCompletedDailyHabit) {
+    const categoryId = challenge?.categoryId as HabitCategoryId | undefined
+    if (categoryId && (!canValidateToday(categoryId) || isTodayValidated(categoryId))) {
       setErrorMessage(dailyValidationMessage)
       setStep('error')
       return
@@ -371,7 +373,10 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
   function finishSuccess(nextPrivacy: CapturePrivacy = privacy) {
     if (!pendingResult) return
     // Seguridad: no confirmar si entre medias ya se validó otro reto hoy.
-    if (hasCompletedDailyHabit) {
+    const lockId = (challenge?.categoryId ?? pendingResult.categoryId) as
+      | HabitCategoryId
+      | undefined
+    if (lockId && (!canValidateToday(lockId) || isTodayValidated(lockId))) {
       setErrorMessage(dailyValidationMessage)
       setStep('error')
       return

@@ -107,7 +107,7 @@ export function HabitGrid() {
     completeDay,
     canValidateToday,
     dailyValidationMessage,
-    hasCompletedDailyHabit,
+    isTodayValidated,
   } = useHabitProgress()
   const [active, setActive] = useState<{
     categoryId: HabitCategoryId
@@ -123,7 +123,7 @@ export function HabitGrid() {
   }))
 
   function openCaptureForCategory(categoryId: HabitCategoryId) {
-    if (!canValidateToday()) {
+    if (!canValidateToday(categoryId)) {
       setSuccessMessage(dailyValidationMessage)
       window.setTimeout(() => setSuccessMessage(null), 5600)
       return
@@ -248,12 +248,14 @@ export function HabitGrid() {
         open={active !== null}
         categoryId={active?.categoryId ?? null}
         completed={active ? getCompleted(active.categoryId) : 0}
-        dailyLocked={hasCompletedDailyHabit}
+        dailyLocked={
+          active ? isTodayValidated(active.categoryId) : false
+        }
         dailyLockedMessage={dailyValidationMessage}
         onClose={() => setActive(null)}
         onCapture={() => {
           if (!active) return
-          if (!canValidateToday()) {
+          if (!canValidateToday(active.categoryId)) {
             setSuccessMessage(dailyValidationMessage)
             window.setTimeout(() => setSuccessMessage(null), 5600)
             return

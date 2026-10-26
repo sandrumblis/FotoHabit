@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useId } from 'react'
-import { ArrowLeft, Flame, Images, UserPlus, Users } from 'lucide-react'
+import { ArrowLeft, Flame, Images, Users } from 'lucide-react'
 import { CommunityAvatar } from './community-avatar'
 import { CommunityFireButton } from './community-fire-button'
 import { EditableProfileBio } from './editable-profile-bio'
+import { ProfileConnectionActions } from './profile-connection-actions'
 import {
   ACCENT_STYLES,
   getPostsByUser,
@@ -18,8 +19,8 @@ type CommunityProfileModalProps = {
   open: boolean
   user: CommunityUser | null
   onClose: () => void
-  onOpenFollowers: () => void
-  onOpenFollowing: () => void
+  onOpenNetwork: () => void
+  networkCount?: number
   postsOverride?: CommunityPost[]
 }
 
@@ -27,8 +28,8 @@ export function CommunityProfileModal({
   open,
   user,
   onClose,
-  onOpenFollowers,
-  onOpenFollowing,
+  onOpenNetwork,
+  networkCount,
   postsOverride,
 }: CommunityProfileModalProps) {
   const titleId = useId()
@@ -121,7 +122,7 @@ export function CommunityProfileModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <StatChip
               icon={Images}
               value={posts.length || user.postsCount}
@@ -130,27 +131,14 @@ export function CommunityProfileModal({
             />
             <button
               type="button"
-              onClick={onOpenFollowers}
+              onClick={onOpenNetwork}
               className="rounded-2xl transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
             >
               <StatChip
                 icon={Users}
-                value={user.followersCount}
-                label="Seguidores"
+                value={networkCount ?? user.followersCount}
+                label="Mi Red"
                 className="text-neon-cyan"
-                interactive
-              />
-            </button>
-            <button
-              type="button"
-              onClick={onOpenFollowing}
-              className="rounded-2xl transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
-            >
-              <StatChip
-                icon={UserPlus}
-                value={user.followingCount}
-                label="Seguidos"
-                className="text-neon-lime"
                 interactive
               />
             </button>
@@ -161,6 +149,10 @@ export function CommunityProfileModal({
               className="text-neon-yellow"
             />
           </div>
+
+          {!user.isSelf ? (
+            <ProfileConnectionActions userId={user.id} userName={user.name} />
+          ) : null}
 
           <section>
             <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">

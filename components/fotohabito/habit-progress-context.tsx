@@ -20,7 +20,8 @@ import { useAuth } from './auth-context'
 type ProgressMap = Record<HabitCategoryId, number>
 type TodayMap = Partial<Record<HabitCategoryId, boolean>>
 
-const DAILY_STORAGE_KEY = 'fotohabit.dailyValidation.v1'
+const DAILY_STORAGE_KEY = 'fotohabit.dailyValidation.v2'
+const DAILY_STORAGE_KEY_LEGACY = 'fotohabit.dailyValidation.v1'
 const PROGRESS_STORAGE_KEY = 'fotohabit.progress.v1'
 const ONBOARDING_STORAGE_PREFIX = 'fotohabit.onboarding.v1:'
 
@@ -61,16 +62,35 @@ function isProCategory(id: HabitCategoryId): boolean {
   return PRO_CATEGORY_IDS.has(id)
 }
 
-type StoredDailyValidation = {
+type StoredDailyBlob = {
   date: string
-  categoryId: HabitCategoryId | 'any'
   userId?: string
+  /** Objetivos ya validados en esa fecha. */
+  categoryIds: HabitCategoryId[]
 }
 
 type StoredProgressBlob = {
   userId: string
   progress: ProgressMap
   activeCategoryIds: HabitCategoryId[]
+}
+
+function sanitizeCategoryIds(raw: unknown): HabitCategoryId[] {
+  if (!Array.isArray(raw)) return []
+  const allowed = new Set<string>(ALL_CATEGORY_IDS)
+  const out: HabitCategoryId[] = []
+  for (const item of raw) {
+    if (typeof item === 'string' && allowed.has(item) && !out.includes(item as HabitCategoryId)) {
+      out.push(item as HabitCategoryId)
+    }
+  }
+  return out
+}
+
+function todayMapFromIds(ids: HabitCategoryId[]): TodayMap {
+  const map: TodayMap = {}
+  for (const id of ids) map[id] = true
+  return map
 }
 
 function sanitizeProgress(raw: unknown): ProgressMap {
@@ -129,63 +149,66 @@ function writeStoredProgress(
   }
 }
 
-function readStoredDaily(userId: string): StoredDailyValidation | null {
+function readStoredDaily(userId: string): StoredDailyBlob | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(DAILY_STORAGE_KEY)
+    const raw =
+      window.localStorage.getItem(DAILY_STORAGE_KEY) ??
+      window.localStorage.getItem(DAILY_STORAGE_KEY_LEGACY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as StoredDailyValidation
-    if (!parsed?.date || !parsed?.categoryId) return null
+    const parsed = JSON.parse(raw) as StoredDailyBlob & { categoryId?: string }
+    if (!parsed?.date) return null
     if (parsed.userId && parsed.userId !== userId) {
       window.localStorage.removeItem(DAILY_STORAGE_KEY)
+      window.localStorage.removeItem(DAILY_STORAGE_KEY_LEGACY)
       return null
     }
     if (parsed.date !== localTodayKey()) {
       window.localStorage.removeItem(DAILY_STORAGE_KEY)
+      window.localStorage.removeItem(DAILY_STORAGE_KEY_LEGACY)
       return null
     }
-    return parsed
+    // Migrar v1 (un solo categoryId) → lista.
+    const categoryIds = sanitizeCategoryIds(
+      parsed.categoryIds ??
+        (parsed.categoryId && parsed.categoryId !== 'any' ? [parsed.categoryId] : []),
+    )
+    return { date: parsed.date, userId, categoryIds }
   } catch {
     return null
   }
 }
 
-function writeStoredDaily(userId: string, categoryId: HabitCategoryId | 'any') {
+function writeStoredDaily(userId: string, categoryIds: HabitCategoryId[]) {
   if (typeof window === 'undefined') return
   try {
-    const payload: StoredDailyValidation = {
+    const payload: StoredDailyBlob = {
       date: localTodayKey(),
-      categoryId,
       userId,
+      categoryIds: sanitizeCategoryIds(categoryIds),
     }
     window.localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(payload))
+    window.localStorage.removeItem(DAILY_STORAGE_KEY_LEGACY)
   } catch {
     /* private mode */
   }
 }
 
-async function syncDailyFromServer(userId: string): Promise<StoredDailyValidation | null> {
+async function syncDailyFromServer(userId: string): Promise<HabitCategoryId[]> {
   try {
     const date = localTodayKey()
     const res = await fetch(`/api/daily-validation?date=${encodeURIComponent(date)}`, {
       method: 'GET',
       credentials: 'same-origin',
     })
-    if (!res.ok) return null
-    const data = (await res.json()) as {
-      completedToday?: boolean
-      categoryId?: string | null
-    }
-    if (!data.completedToday) return null
-    const categoryId =
-      typeof data.categoryId === 'string' && data.categoryId
-        ? (data.categoryId as HabitCategoryId)
-        : 'any'
-    writeStoredDaily(userId, categoryId)
-    return { date, categoryId, userId }
+    if (!res.ok) return []
+    const data = (await res.json()) as { categories?: unknown }
+    const ids = sanitizeCategoryIds(data.categories)
+    if (ids.length > 0) writeStoredDaily(userId, ids)
+    return ids
   } catch (err) {
     console.warn('[habit-progress] sync daily validation failed', err)
-    return null
+    return []
   }
 }
 
@@ -202,7 +225,7 @@ async function persistDailyOnServer(categoryId: HabitCategoryId) {
       message?: string
     }
     if (data.alreadyExists) {
-      console.info('[habit-progress] daily validation already recorded on server')
+      console.info('[habit-progress] objective already validated today on server')
     }
   } catch (err) {
     console.warn('[habit-progress] persist daily validation failed', err)
@@ -246,13 +269,16 @@ type HabitProgressContextValue = {
   activeCategoryIds: HabitCategoryId[]
   freeActiveLimit: number
   hydrated: boolean
-  /** true si ya hay una validación exitosa en el día local actual */
+  /**
+   * @deprecated Prefer isTodayValidated(id). true si CUALQUIER objetivo se validó hoy.
+   */
   hasCompletedDailyHabit: boolean
   dailyValidationMessage: string
   getCompleted: (id: HabitCategoryId) => number
   isTodayValidated: (id: HabitCategoryId) => boolean
   isActive: (id: HabitCategoryId) => boolean
-  canValidateToday: () => boolean
+  /** true si ese objetivo concreto aún se puede validar hoy. */
+  canValidateToday: (id: HabitCategoryId) => boolean
   canActivateCategory: (id: HabitCategoryId, opts?: ActivateOptions) => ActivateCategoryResult
   /** Añade un objetivo al perfil (Stories). Respeta freemium. */
   activateCategory: (id: HabitCategoryId, opts?: ActivateOptions) => ActivateCategoryResult
@@ -289,21 +315,18 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
     setActiveCategoryIds(stored?.activeCategoryIds ?? [...EMPTY_ACTIVE])
 
     const localDaily = readStoredDaily(userId)
-    if (localDaily) {
-      setTodayValidated({
-        [localDaily.categoryId === 'any' ? ALL_CATEGORY_IDS[0] : localDaily.categoryId]: true,
-      })
-    } else {
-      setTodayValidated({})
-    }
+    setTodayValidated(localDaily ? todayMapFromIds(localDaily.categoryIds) : {})
     setHydrated(true)
 
     void (async () => {
-      const remote = await syncDailyFromServer(userId)
-      if (cancelled || !remote) return
-      const key =
-        remote.categoryId === 'any' ? ALL_CATEGORY_IDS[0] : remote.categoryId
-      setTodayValidated({ [key]: true })
+      const remoteIds = await syncDailyFromServer(userId)
+      if (cancelled) return
+      if (remoteIds.length === 0) return
+      setTodayValidated((prev) => {
+        const merged = { ...prev }
+        for (const id of remoteIds) merged[id] = true
+        return merged
+      })
     })()
 
     return () => {
@@ -337,7 +360,10 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
     [activeCategoryIds],
   )
 
-  const canValidateToday = useCallback(() => !hasCompletedDailyHabit, [hasCompletedDailyHabit])
+  const canValidateToday = useCallback(
+    (id: HabitCategoryId) => !Boolean(todayValidated[id]),
+    [todayValidated],
+  )
 
   const canActivateCategory = useCallback(
     (id: HabitCategoryId, opts?: ActivateOptions): ActivateCategoryResult => {
@@ -367,8 +393,10 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const completeDay = useCallback(
-    (id: HabitCategoryId, opts?: ActivateOptions): CompleteDayResult => {
-      if (Object.values(todayValidated).some(Boolean) || (userId && readStoredDaily(userId))) {
+    (id: HabitCategoryId, _opts?: ActivateOptions): CompleteDayResult => {
+      void _opts
+      const stored = userId ? readStoredDaily(userId) : null
+      if (todayValidated[id] || stored?.categoryIds.includes(id)) {
         return {
           ok: false,
           reason: 'already-today',
@@ -381,9 +409,11 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
         next = (prev[id] ?? 0) + 1
         return { ...prev, [id]: next }
       })
-      setTodayValidated({ [id]: true })
+      setTodayValidated((prev) => ({ ...prev, [id]: true }))
       if (userId) {
-        writeStoredDaily(userId, id)
+        const prevIds = stored?.categoryIds ?? []
+        const nextIds = prevIds.includes(id) ? prevIds : [...prevIds, id]
+        writeStoredDaily(userId, nextIds)
         void persistDailyOnServer(id)
       }
 
