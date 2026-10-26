@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Eye, EyeOff, Loader2, Lock, Mail, User } from 'lucide-react'
 import { BrandLogo } from './brand-logo'
+import { LegalModal } from './legal-modal'
 import { useAuth } from './auth-context'
+import type { LegalDocId } from '@/lib/legal-content'
 import { cn } from '@/lib/utils'
 
 type Mode = 'login' | 'signup'
@@ -69,6 +71,8 @@ export function AuthScreen() {
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [acceptedLegal, setAcceptedLegal] = useState(false)
+  const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -102,20 +106,28 @@ export function AuthScreen() {
     return null
   }, [mode, name])
 
+  const legalError =
+    mode === 'signup' && !acceptedLegal
+      ? 'Debes aceptar los Términos y la Política de Privacidad'
+      : null
+
   const canSubmit =
     !emailError &&
     !passwordError &&
-    (mode === 'login' || (!confirmError && !nameError)) &&
+    (mode === 'login' || (!confirmError && !nameError && acceptedLegal)) &&
     !submitting
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setTouched({ email: true, password: true, confirm: true, name: true })
+    setTouched({ email: true, password: true, confirm: true, name: true, legal: true })
     if (
       emailError ||
       passwordError ||
-      (mode === 'signup' && (confirmError || nameError))
+      (mode === 'signup' && (confirmError || nameError || !acceptedLegal))
     ) {
+      if (mode === 'signup' && !acceptedLegal) {
+        setFormError('Marca la casilla para aceptar Términos y Política de Privacidad.')
+      }
       return
     }
     setSubmitting(true)
@@ -133,6 +145,11 @@ export function AuthScreen() {
   }
 
   async function handleOAuth(provider: 'apple' | 'google') {
+    if (mode === 'signup' && !acceptedLegal) {
+      setTouched((t) => ({ ...t, legal: true }))
+      setFormError('Marca la casilla para aceptar Términos y Política de Privacidad.')
+      return
+    }
     setSubmitting(true)
     setFormError(null)
     try {
@@ -153,6 +170,7 @@ export function AuthScreen() {
     setTouched({})
     setConfirm('')
     setShowConfirmPassword(false)
+    if (next === 'login') setAcceptedLegal(false)
   }
 
   return (
@@ -214,10 +232,50 @@ export function AuthScreen() {
             </button>
           </div>
 
+          {mode === 'signup' ? (
+            <div className="mb-4 rounded-2xl border border-white/10 bg-background/50 px-3 py-3">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptedLegal}
+                  onChange={(e) => {
+                    setAcceptedLegal(e.target.checked)
+                    setTouched((t) => ({ ...t, legal: true }))
+                    if (e.target.checked) setFormError(null)
+                  }}
+                  className="mt-0.5 size-4 shrink-0 rounded border-white/30 accent-[var(--color-neon-cyan)]"
+                  required
+                />
+                <span className="text-xs leading-relaxed text-muted-foreground">
+                  He leído y acepto los{' '}
+                  <button
+                    type="button"
+                    onClick={() => setLegalDoc('terms')}
+                    className="font-medium text-neon-cyan underline-offset-2 hover:underline"
+                  >
+                    Términos y Condiciones
+                  </button>{' '}
+                  y la{' '}
+                  <button
+                    type="button"
+                    onClick={() => setLegalDoc('privacy')}
+                    className="font-medium text-neon-cyan underline-offset-2 hover:underline"
+                  >
+                    Política de Privacidad
+                  </button>
+                  .
+                </span>
+              </label>
+              {touched.legal && legalError ? (
+                <p className="mt-2 text-[11px] text-red-300">{legalError}</p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="flex w-full flex-col items-stretch gap-2.5">
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || (mode === 'signup' && !acceptedLegal)}
               onClick={() => void handleOAuth('google')}
               className={cn(
                 'relative inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl',
@@ -232,7 +290,7 @@ export function AuthScreen() {
             </button>
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || (mode === 'signup' && !acceptedLegal)}
               onClick={() => void handleOAuth('apple')}
               className={cn(
                 'relative inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl',
@@ -415,8 +473,28 @@ export function AuthScreen() {
               </>
             )}
           </p>
+
+          <p className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-[11px] text-muted-foreground/80">
+            <button
+              type="button"
+              onClick={() => setLegalDoc('privacy')}
+              className="hover:text-neon-cyan hover:underline"
+            >
+              Privacidad
+            </button>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => setLegalDoc('terms')}
+              className="hover:text-neon-cyan hover:underline"
+            >
+              Términos
+            </button>
+          </p>
         </div>
       </div>
+
+      <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
   )
 }

@@ -8,9 +8,9 @@ import {
   Globe2,
   ImagePlus,
   Loader2,
-  Lock,
   RefreshCw,
   SwitchCamera,
+  Users,
   X,
 } from 'lucide-react'
 import { ShareAchievement } from './share-achievement'
@@ -20,7 +20,8 @@ import type { HabitCategoryId } from '@/lib/habit-challenges'
 import { getLevelForDay } from '@/lib/habit-levels'
 import { cn } from '@/lib/utils'
 
-export type CapturePrivacy = 'private' | 'public'
+/** global = Feed Global · network = Mi Red (conexiones mutuas) */
+export type CapturePrivacy = 'global' | 'network'
 
 export type CaptureChallengeContext = {
   title: string
@@ -70,7 +71,8 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [caption, setCaption] = useState('')
-  const [privacy, setPrivacy] = useState<CapturePrivacy>('public')
+  const [privacy, setPrivacy] = useState<CapturePrivacy>('global')
+  const [publishing, setPublishing] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -125,7 +127,8 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     if (!open) return
     setStep('camera')
     setCaption('')
-    setPrivacy('public')
+    setPrivacy('global')
+    setPublishing(false)
     setErrorMessage(null)
     setSuccessMessage(null)
     setPendingResult(null)
@@ -370,8 +373,8 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     void startCamera(facing)
   }
 
-  function finishSuccess(nextPrivacy: CapturePrivacy = privacy) {
-    if (!pendingResult) return
+  function finishSuccess() {
+    if (!pendingResult || publishing) return
     // Seguridad: no confirmar si entre medias ya se validó otro reto hoy.
     const lockId = (challenge?.categoryId ?? pendingResult.categoryId) as
       | HabitCategoryId
@@ -381,14 +384,16 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       setStep('error')
       return
     }
+    setPublishing(true)
     const imageFile = fileRef.current ?? pendingResult.imageFile ?? null
     const final: CaptureResult = {
       ...pendingResult,
       imageFile,
       caption: caption.trim(),
-      privacy: nextPrivacy,
+      privacy,
     }
     // El padre posee previewUrl + File: no revocar el blob al limpiar estado.
+    // La foto NO se sube aquí: el padre publica solo tras este "Publicar".
     transferredPreviewRef.current = final.previewUrl
     setPreviewUrl(null)
     fileRef.current = null
@@ -556,7 +561,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
                   <Check className="size-7 stroke-[3]" aria-hidden="true" />
                 </span>
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neon-lime">
-                  Validado
+                  Personaliza tu publicación
                 </p>
                 <h3 className="text-xl font-semibold text-foreground">¡Prueba aceptada!</h3>
                 <p className="text-sm leading-relaxed text-muted-foreground">{successMessage}</p>
@@ -566,43 +571,92 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
                 </p>
               </div>
 
+              {previewUrl ? (
+                <div className="relative mx-auto aspect-[4/5] w-full max-w-[11rem] overflow-hidden rounded-2xl border border-white/15">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrl}
+                    alt="Vista previa antes de publicar"
+                    className="absolute inset-0 size-full object-cover"
+                  />
+                </div>
+              ) : null}
+
               <label className="w-full text-left">
-                <span className="text-[11px] text-muted-foreground">Pie de foto (opcional)</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Pie de foto
+                </span>
                 <textarea
                   value={caption}
-                  onChange={(e) => setCaption(e.target.value.slice(0, 200))}
-                  rows={2}
-                  className="mt-1 w-full resize-none rounded-2xl border border-white/10 bg-background/80 px-3 py-2 text-base text-foreground outline-none focus:border-neon-cyan/50 sm:text-sm"
-                  placeholder="Comparte cómo te sentiste hoy…"
+                  onChange={(e) => setCaption(e.target.value.slice(0, 220))}
+                  rows={3}
+                  className="mt-1.5 w-full resize-none rounded-2xl border border-white/10 bg-background/80 px-3 py-2.5 text-base text-foreground outline-none ring-neon-cyan/30 placeholder:text-muted-foreground focus:border-neon-cyan/50 focus:ring-2 sm:text-sm"
+                  placeholder="Escribe tu motivación o un comentario…"
                 />
               </label>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setPrivacy('public')
-                  finishSuccess('public')
-                }}
-                className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-neon-lime px-4 text-base font-bold text-background shadow-[0_0_40px_-4px_var(--color-neon-lime)] transition-transform hover:scale-[1.02] active:scale-[0.99]"
-              >
-                <Globe2 className="size-5" aria-hidden="true" />
-                Publicar en FotoHabit (Feed global)
-              </button>
-              <p className="-mt-2 text-center text-[11px] text-muted-foreground">
-                Máximo protagonismo: tu prueba entra al feed de la comunidad
-              </p>
+              <fieldset className="w-full text-left">
+                <legend className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Visibilidad
+                </legend>
+                <div
+                  role="radiogroup"
+                  aria-label="Visibilidad de la publicación"
+                  className="mt-1.5 grid grid-cols-2 gap-2"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={privacy === 'global'}
+                    onClick={() => setPrivacy('global')}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 rounded-2xl border px-3 py-3 text-center transition',
+                      privacy === 'global'
+                        ? 'border-neon-cyan/50 bg-neon-cyan/15 text-neon-cyan shadow-[0_0_24px_-10px_var(--color-neon-cyan)]'
+                        : 'border-white/10 bg-background/40 text-muted-foreground hover:border-white/20',
+                    )}
+                  >
+                    <Globe2 className="size-5" aria-hidden="true" />
+                    <span className="text-xs font-semibold">Feed Global</span>
+                    <span className="text-[10px] opacity-80">Toda la comunidad</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={privacy === 'network'}
+                    onClick={() => setPrivacy('network')}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 rounded-2xl border px-3 py-3 text-center transition',
+                      privacy === 'network'
+                        ? 'border-neon-lime/50 bg-neon-lime/15 text-neon-lime shadow-[0_0_24px_-10px_var(--color-neon-lime)]'
+                        : 'border-white/10 bg-background/40 text-muted-foreground hover:border-white/20',
+                    )}
+                  >
+                    <Users className="size-5" aria-hidden="true" />
+                    <span className="text-xs font-semibold">Mi Red</span>
+                    <span className="text-[10px] opacity-80">Solo conexiones</span>
+                  </button>
+                </div>
+              </fieldset>
 
               <button
                 type="button"
-                onClick={() => {
-                  setPrivacy('private')
-                  finishSuccess('private')
-                }}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 text-sm font-medium text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+                disabled={publishing}
+                onClick={finishSuccess}
+                className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-neon-lime px-4 text-base font-bold text-background shadow-[0_0_40px_-4px_var(--color-neon-lime)] transition-transform hover:scale-[1.02] active:scale-[0.99] disabled:opacity-60"
               >
-                <Lock className="size-4" aria-hidden="true" />
-                Solo validar (sin publicar)
+                {publishing ? (
+                  <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+                ) : privacy === 'global' ? (
+                  <Globe2 className="size-5" aria-hidden="true" />
+                ) : (
+                  <Users className="size-5" aria-hidden="true" />
+                )}
+                Publicar
               </button>
+              <p className="-mt-2 text-center text-[11px] text-muted-foreground">
+                La foto se sube solo al pulsar Publicar, con tu texto y visibilidad.
+              </p>
 
               <details className="group border-t border-white/10 pt-3">
                 <summary className="cursor-pointer list-none text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">

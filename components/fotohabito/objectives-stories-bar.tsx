@@ -15,7 +15,6 @@ import {
   CigaretteOff,
   Coins,
   Dumbbell,
-  Flame,
   Moon,
   Plus,
   Salad,
@@ -276,17 +275,10 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
                         )}
                         style={{ '--glow': meta.color } as CSSProperties}
                       >
-                        {doneToday ? (
-                          <Flame
-                            className="size-7 fill-neon-yellow text-neon-yellow drop-shadow-[0_0_10px_var(--color-neon-yellow)]"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <Icon
-                            className="size-7 text-[var(--glow)] [filter:drop-shadow(0_0_8px_var(--glow))]"
-                            aria-hidden="true"
-                          />
-                        )}
+                        <Icon
+                          className="size-7 text-[var(--glow)] [filter:drop-shadow(0_0_8px_var(--glow))]"
+                          aria-hidden="true"
+                        />
                       </span>
                     </NeonProgressRing>
 

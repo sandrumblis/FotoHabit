@@ -2,7 +2,7 @@
  * Tipos alineados con el esquema REAL de Supabase (FotoHabit).
  * profiles: id, username, avatar_url, level, created_at
  * habits: id, user_id, title, category, streak_days, created_at
- * posts: id, user_id, habit_id, image_url, caption, created_at
+ * posts: id, user_id, habit_id, image_url, caption, visibility, created_at
  * daily_validations: id, user_id, category, validation_date, created_at
  * bucket público: posts
  */
@@ -67,6 +67,7 @@ export type Database = {
           habit_id: string | null
           image_url: string
           caption: string | null
+          visibility: 'global' | 'network'
           created_at: string
         }
         Insert: {
@@ -75,6 +76,7 @@ export type Database = {
           habit_id?: string | null
           image_url: string
           caption?: string | null
+          visibility?: 'global' | 'network'
           created_at?: string
         }
         Update: {
@@ -83,6 +85,7 @@ export type Database = {
           habit_id?: string | null
           image_url?: string
           caption?: string | null
+          visibility?: 'global' | 'network'
           created_at?: string
         }
       }

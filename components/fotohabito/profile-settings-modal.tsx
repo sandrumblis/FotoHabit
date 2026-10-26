@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { Camera, Loader2, Settings2, UserRound, X } from 'lucide-react'
+import { Camera, Loader2, Scale, Settings2, UserRound, X } from 'lucide-react'
 import { CommunityAvatar } from './community-avatar'
+import { LegalModal } from './legal-modal'
 import { useProfileSettings } from './profile-settings-context'
+import type { LegalDocId } from '@/lib/legal-content'
 import { cn } from '@/lib/utils'
 
 export function ProfileSettingsModal() {
@@ -25,6 +27,7 @@ export function ProfileSettingsModal() {
   const [nameDraft, setNameDraft] = useState(displayName)
   const [localError, setLocalError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
+  const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null)
 
   useEffect(() => {
     if (settingsOpen) {
@@ -218,8 +221,37 @@ export function ProfileSettingsModal() {
               )}
             </button>
           </form>
+
+          <div className="mt-8 border-t border-white/10 pt-5">
+            <p className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              <Scale className="size-3" aria-hidden="true" />
+              Legal
+            </p>
+            <ul className="mt-3 flex flex-col gap-2">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLegalDoc('privacy')}
+                  className="w-full rounded-2xl border border-white/10 bg-background/40 px-4 py-3 text-left text-sm text-foreground transition hover:border-neon-cyan/40"
+                >
+                  Política de Privacidad
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setLegalDoc('terms')}
+                  className="w-full rounded-2xl border border-white/10 bg-background/40 px-4 py-3 text-left text-sm text-foreground transition hover:border-neon-cyan/40"
+                >
+                  Términos de Uso
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
+
+      <LegalModal doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
   )
 }

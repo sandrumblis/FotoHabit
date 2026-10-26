@@ -15,12 +15,15 @@ import {
   fetchCommunityFeed,
   publishValidatedPhoto,
 } from '@/lib/supabase/posts'
+import { deleteOwnPost, reportContent } from '@/lib/supabase/moderation'
 import type { CommunityPost } from '@/lib/community-data'
 
 type PublishInput = {
   habit: string
   accent: CommunityPost['accent']
   caption: string
+  /** global = Feed Global · network = Mi Red */
+  visibility?: 'global' | 'network'
   level: number
   streakDays: number
   previewUrl?: string | null
@@ -40,6 +43,10 @@ type SocialFeedContextValue = {
   error: string | null
   hasPublishedLive: boolean
   publishPost: (input: PublishInput) => Promise<PublishResult>
+  deletePost: (postId: string) => Promise<void>
+  deleteComment: (postId: string, commentId: string) => Promise<void>
+  reportPost: (postId: string, reason?: string) => Promise<void>
+  reportComment: (commentId: string, reason?: string) => Promise<void>
   refreshFeed: () => Promise<void>
   getPostsByUserId: (userId: string) => CommunityPost[]
 }
@@ -65,6 +72,7 @@ async function publishViaServerApi(input: {
   habitTitle: string
   categoryKey?: string
   caption: string
+  visibility?: 'global' | 'network'
   streakDays: number
   level: number
   image: Blob
@@ -78,6 +86,7 @@ async function publishViaServerApi(input: {
         })
   form.append('image', file)
   form.append('caption', input.caption)
+  form.append('visibility', input.visibility ?? 'global')
   form.append('habitTitle', input.habitTitle)
   form.append('displayName', input.displayName)
   form.append('streakDays', String(input.streakDays))
@@ -189,6 +198,7 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
               habitTitle: input.habit,
               categoryKey: input.categoryId,
               caption: input.caption,
+              visibility: input.visibility ?? 'global',
               streakDays: input.streakDays,
               level: input.level,
               image,
@@ -202,6 +212,7 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
               categoryKey: input.categoryId,
               accent: input.accent,
               caption: input.caption,
+              visibility: input.visibility ?? 'global',
               streakDays: input.streakDays,
               level: input.level,
               image,
@@ -216,6 +227,7 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
             categoryKey: input.categoryId,
             accent: input.accent,
             caption: input.caption,
+            visibility: input.visibility ?? 'global',
             streakDays: input.streakDays,
             level: input.level,
             image,
@@ -245,6 +257,70 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
     [posts],
   )
 
+  const deletePost = useCallback(
+    async (postId: string) => {
+      if (!user) throw new Error('Debes iniciar sesión')
+      const post = posts.find((p) => p.id === postId)
+      if (!post) throw new Error('Publicación no encontrada')
+      if (post.userId !== user.id) {
+        throw new Error('Solo puedes eliminar tus propias fotos')
+      }
+      const looksRemote = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        postId,
+      )
+      if (looksRemote) {
+        await deleteOwnPost(postId)
+      }
+      setPosts((prev) => prev.filter((p) => p.id !== postId))
+    },
+    [user, posts],
+  )
+
+  const deleteComment = useCallback(
+    async (postId: string, commentId: string) => {
+      if (!user) throw new Error('Debes iniciar sesión')
+      const post = posts.find((p) => p.id === postId)
+      const comment = post?.comments?.find((c) => c.id === commentId)
+      if (!comment) throw new Error('Comentario no encontrado')
+      if (comment.userId !== user.id) {
+        throw new Error('Solo puedes eliminar tus propios comentarios')
+      }
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id !== postId
+            ? p
+            : {
+                ...p,
+                comments: (p.comments ?? []).filter((c) => c.id !== commentId),
+              },
+        ),
+      )
+    },
+    [user, posts],
+  )
+
+  const reportPost = useCallback(
+    async (postId: string, reason?: string) => {
+      await reportContent({
+        targetType: 'post',
+        targetId: postId,
+        reason: reason ?? 'Publicación reportada desde el feed',
+      })
+    },
+    [],
+  )
+
+  const reportComment = useCallback(
+    async (commentId: string, reason?: string) => {
+      await reportContent({
+        targetType: 'comment',
+        targetId: commentId,
+        reason: reason ?? 'Comentario reportado desde el feed',
+      })
+    },
+    [],
+  )
+
   const value = useMemo(
     () => ({
       posts,
@@ -252,6 +328,10 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
       error,
       hasPublishedLive,
       publishPost,
+      deletePost,
+      deleteComment,
+      reportPost,
+      reportComment,
       refreshFeed,
       getPostsByUserId,
     }),
@@ -261,6 +341,10 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
       error,
       hasPublishedLive,
       publishPost,
+      deletePost,
+      deleteComment,
+      reportPost,
+      reportComment,
       refreshFeed,
       getPostsByUserId,
     ],

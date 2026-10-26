@@ -10,7 +10,18 @@ const POSTS_BUCKET = 'posts'
 const PROFILE_COLUMNS = 'id, username, avatar_url, level, created_at' as const
 /** Columnas reales de habits (category, no accent / category_key). */
 const HABIT_COLUMNS = 'id, user_id, title, category, streak_days, created_at' as const
-const POST_COLUMNS = 'id, user_id, habit_id, image_url, caption, created_at' as const
+const POST_COLUMNS =
+  'id, user_id, habit_id, image_url, caption, visibility, created_at' as const
+const POST_COLUMNS_LEGACY = 'id, user_id, habit_id, image_url, caption, created_at' as const
+
+export type PostVisibility = 'global' | 'network'
+
+function normalizeVisibility(
+  value: string | null | undefined,
+): PostVisibility {
+  if (value === 'network' || value === 'private') return 'network'
+  return 'global'
+}
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, base64] = dataUrl.split(',')
@@ -377,7 +388,9 @@ function fallbackCommunityPost(
     caption: row.caption ?? '',
     time: 'ahora',
     likes: 0,
-    visibility: 'public',
+    visibility: normalizeVisibility(
+      (row as PostRow & { visibility?: string }).visibility,
+    ),
     level: extras?.level,
     streakDays: extras?.streakDays,
     imageUrl: row.image_url,
@@ -388,11 +401,19 @@ function fallbackCommunityPost(
   }
 }
 
+function rlsHint(message: string) {
+  if (/row-level security|rls policy/i.test(message)) {
+    return `${message} · Ejecuta supabase/fix-rls-publish.sql en el SQL Editor de Supabase (INSERT posts exige auth.uid() = user_id).`
+  }
+  return message
+}
+
 export async function createPostRecord(input: {
   userId: string
   habitId: string | null
   imageUrl: string
   caption: string
+  visibility?: PostVisibility
   /** Fallback si la hidratación falla (RLS / perfil). */
   fallback?: {
     displayName?: string
@@ -403,57 +424,111 @@ export async function createPostRecord(input: {
   }
 }) {
   const supabase = createClient()
+  const visibility = normalizeVisibility(input.visibility)
 
   // Solo columnas reales de `posts` (nunca accent / display_name).
+  // user_id SIEMPRE = sesión actual (RLS: auth.uid() = user_id).
   const insertPayload = {
     user_id: input.userId,
     habit_id: input.habitId,
     image_url: input.imageUrl,
     caption: input.caption || null,
+    visibility,
   }
 
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('posts')
       .insert(insertPayload)
       .select(POST_COLUMNS)
       .single()
 
-    if (error || !data) {
-      throw toError('createPost.insert', error, 'No se pudo crear la publicación en posts')
+    // Columna visibility aún no migrada → reintento legacy.
+    if (
+      error &&
+      /visibility|schema cache|column/i.test(error.message)
+    ) {
+      const legacy = await supabase
+        .from('posts')
+        .insert({
+          user_id: input.userId,
+          habit_id: input.habitId,
+          image_url: input.imageUrl,
+          caption: input.caption || null,
+        })
+        .select(POST_COLUMNS_LEGACY)
+        .single()
+      data = legacy.data
+        ? ({ ...legacy.data, visibility } as PostRow)
+        : null
+      error = legacy.error
     }
 
-    const row = data as PostRow
+    if (error || !data) {
+      throw toError(
+        'createPost.insert',
+        error,
+        rlsHint(error?.message || 'No se pudo crear la publicación en posts'),
+      )
+    }
+
+    const row = {
+      ...(data as PostRow),
+      visibility: normalizeVisibility(
+        (data as PostRow).visibility ?? visibility,
+      ),
+    }
 
     try {
       const [hydrated] = await hydratePosts([row])
       const mapped = mapPostRow(hydrated)
-      if (mapped) return mapped
+      if (mapped) {
+        return { ...mapped, visibility: row.visibility }
+      }
     } catch (hydrateErr) {
       logPublishError('createPost.hydrate', hydrateErr)
     }
 
     return fallbackCommunityPost(row, input.fallback)
   } catch (err) {
-    if (err instanceof Error) throw err
+    if (err instanceof Error) {
+      throw new Error(rlsHint(err.message))
+    }
     throw toError('createPost', err, 'Error al crear la publicación')
   }
 }
 
 export async function fetchCommunityFeed() {
   const supabase = createClient()
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('posts')
     .select(POST_COLUMNS)
     .order('created_at', { ascending: false })
     .limit(80)
+
+  if (error && /visibility|schema cache|column/i.test(error.message)) {
+    const legacy = await supabase
+      .from('posts')
+      .select(POST_COLUMNS_LEGACY)
+      .order('created_at', { ascending: false })
+      .limit(80)
+    data = ((legacy.data as PostRow[] | null) ?? []).map((row) => ({
+      ...row,
+      visibility: 'global' as const,
+    }))
+    error = legacy.error
+  }
 
   if (error) {
     logPublishError('fetchCommunityFeed', error)
     throw new Error(error.message)
   }
 
-  const hydrated = await hydratePosts((data as PostRow[] | null) ?? [])
+  const rows = ((data as PostRow[] | null) ?? []).map((row) => ({
+    ...row,
+    visibility: normalizeVisibility(row.visibility),
+  }))
+  const hydrated = await hydratePosts(rows)
   return hydrated.map(mapPostRow).filter((p): p is NonNullable<typeof p> => Boolean(p))
 }
 
@@ -465,6 +540,7 @@ export async function publishValidatedPhoto(input: {
   /** Solo UI local; nunca se escribe en profiles/posts. */
   accent?: HabitAccent
   caption: string
+  visibility?: PostVisibility
   streakDays: number
   level: number
   image: string | Blob
@@ -491,6 +567,7 @@ export async function publishValidatedPhoto(input: {
       habitId,
       imageUrl,
       caption: input.caption,
+      visibility: input.visibility ?? 'global',
       fallback: {
         displayName: input.displayName,
         habitTitle: input.habitTitle,

@@ -79,12 +79,12 @@ export function CaptureBanner() {
             </p>
             {result?.valid ? (
               <p className="mt-1 inline-flex items-center gap-1.5 font-mono text-[11px] text-neon-lime">
-                {result.privacy === 'public' ? (
-                  <Globe2 className="size-3.5" aria-hidden="true" />
-                ) : (
+                {result.privacy === 'network' ? (
                   <Lock className="size-3.5" aria-hidden="true" />
+                ) : (
+                  <Globe2 className="size-3.5" aria-hidden="true" />
                 )}
-                {result.privacy === 'public' ? 'Validar y Publicar' : 'Solo validar'}
+                {result.privacy === 'network' ? 'Publicado en Mi Red' : 'Publicado en Feed Global'}
                 {result.caption ? ` · “${result.caption}”` : null}
               </p>
             ) : null}

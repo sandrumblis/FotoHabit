@@ -1,6 +1,7 @@
 'use client'
 
 import { AnalyticsDashboard } from './analytics-dashboard'
+import { AppFooter } from './app-footer'
 import { AppNavProvider, useAppNav } from './app-nav-context'
 import { AuthProvider, useAuth } from './auth-context'
 import { AuthScreen } from './auth-screen'
@@ -32,6 +33,7 @@ function MainContent() {
         </div>
         {view === 'analytics' ? <AnalyticsDashboard /> : null}
       </main>
+      <AppFooter />
 
       <ProfileSettingsModal />
       <ProUnlockModal

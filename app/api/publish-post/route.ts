@@ -8,7 +8,10 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const POSTS_BUCKET = 'posts'
-const POST_COLUMNS = 'id, user_id, habit_id, image_url, caption, created_at' as const
+const POST_COLUMNS =
+  'id, user_id, habit_id, image_url, caption, visibility, created_at' as const
+const POST_COLUMNS_LEGACY =
+  'id, user_id, habit_id, image_url, caption, created_at' as const
 
 function json(body: Record<string, unknown>, status = 200) {
   return NextResponse.json(body, {
@@ -17,9 +20,17 @@ function json(body: Record<string, unknown>, status = 200) {
   })
 }
 
+function normalizeVisibility(raw: string): 'global' | 'network' {
+  if (raw === 'network' || raw === 'private') return 'network'
+  return 'global'
+}
+
 function friendlyNetwork(msg: string) {
   if (/failed to fetch|networkerror|fetch failed|econnrefused|enotfound/i.test(msg)) {
     return 'No se pudo conectar con Supabase. Revisa NEXT_PUBLIC_SUPABASE_URL, el bucket «posts» (público) y las políticas de Storage/RLS.'
+  }
+  if (/row-level security|rls policy/i.test(msg)) {
+    return 'RLS bloqueó la publicación. En Supabase → SQL Editor ejecuta el archivo supabase/fix-rls-publish.sql (INSERT en posts exige auth.uid() = user_id).'
   }
   return msg
 }
@@ -39,6 +50,7 @@ export async function POST(request: Request) {
     const form = await request.formData()
     const image = form.get('image')
     const caption = String(form.get('caption') ?? '').trim()
+    const visibility = normalizeVisibility(String(form.get('visibility') ?? 'global'))
     const habitTitle = String(form.get('habitTitle') ?? '').trim() || 'Hábito'
     const categoryKey = String(form.get('categoryKey') ?? '').trim() || null
     const displayName =
@@ -173,20 +185,45 @@ export async function POST(request: Request) {
       return json({ ok: false, message: 'No se obtuvo la URL pública de la imagen.' }, 500)
     }
 
-    // Insert solo columnas reales de posts.
-    const { data: postRow, error: postError } = await supabase
+    // Insert: user_id = auth.uid() (obligatorio para RLS posts_insert_own).
+    let { data: postRow, error: postError } = await supabase
       .from('posts')
       .insert({
         user_id: userId,
         habit_id: habitId,
         image_url: imageUrl,
         caption: caption || null,
+        visibility,
       })
       .select(POST_COLUMNS)
       .single()
 
+    if (
+      postError &&
+      /visibility|schema cache|column/i.test(postError.message)
+    ) {
+      const legacy = await supabase
+        .from('posts')
+        .insert({
+          user_id: userId,
+          habit_id: habitId,
+          image_url: imageUrl,
+          caption: caption || null,
+        })
+        .select(POST_COLUMNS_LEGACY)
+        .single()
+      postRow = legacy.data
+        ? ({ ...legacy.data, visibility } as PostRow)
+        : null
+      postError = legacy.error
+    }
+
     if (postError || !postRow) {
-      console.error('[publish-post] insert', postError)
+      console.error('[publish-post] insert', {
+        postError,
+        userId,
+        authUid: userId,
+      })
       return json(
         {
           ok: false,
@@ -198,7 +235,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const row = postRow as PostRow
+    const row = {
+      ...(postRow as PostRow),
+      visibility: normalizeVisibility(
+        (postRow as PostRow).visibility ?? visibility,
+      ),
+    }
     const accent = accentFromCategory(categoryKey)
     const author = profileToCommunityUser(
       {
@@ -219,7 +261,7 @@ export async function POST(request: Request) {
       caption: row.caption ?? '',
       time: 'ahora',
       likes: 0,
-      visibility: 'public',
+      visibility: row.visibility,
       level,
       streakDays,
       imageUrl: row.image_url,

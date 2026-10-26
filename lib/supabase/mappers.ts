@@ -109,7 +109,7 @@ export function mapPostRow(row: PostWithRelations): CommunityPost | null {
     caption: row.caption ?? '',
     time: formatRelativeTime(row.created_at),
     likes: 0,
-    visibility: 'public',
+    visibility: row.visibility === 'network' ? 'network' : 'global',
     level: profile?.level ?? undefined,
     streakDays: habit?.streak_days ?? undefined,
     imageUrl: row.image_url,

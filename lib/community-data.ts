@@ -22,8 +22,8 @@ export type CommunityPost = {
   caption: string
   time: string
   likes: number
-  /** Público en el feed global unificado */
-  visibility?: 'public' | 'private'
+  /** global = Feed Global · network = Mi Red (conexiones mutuas) */
+  visibility?: 'global' | 'network' | 'public' | 'private'
   level?: number
   streakDays?: number
   /** Foto local tras validar */
@@ -595,7 +595,10 @@ export function getPostsByUser(userId: string): CommunityPost[] {
 
 /** Feed unificado global: todas las publicaciones públicas de la plataforma. */
 export function getGlobalPublicFeed(): CommunityPost[] {
-  return COMMUNITY_POSTS.filter((p) => (p.visibility ?? 'public') === 'public')
+  return COMMUNITY_POSTS.filter((p) => {
+    const v = p.visibility ?? 'global'
+    return v === 'global' || v === 'public'
+  })
 }
 
 /** @deprecated usa getGlobalPublicFeed */

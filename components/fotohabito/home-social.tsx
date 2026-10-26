@@ -7,6 +7,7 @@ import { CommunityFireButton } from './community-fire-button'
 import { CommunityProfileBanner, type ProfileMetricKey } from './community-profile-banner'
 import { CommunityProfileModal } from './community-profile-modal'
 import { CommunityConnectionsModal } from './community-connections-modal'
+import { FeedContentMenu } from './feed-content-menu'
 import { NetworkPanel } from './network-panel'
 import { ObjectivesStoriesBar } from './objectives-stories-bar'
 import { useAuth } from './auth-context'
@@ -33,6 +34,7 @@ import {
   getUser,
   HABIT_MOTTO,
   habitAccentFromCategory,
+  type CommunityPost,
   type CommunityUser,
 } from '@/lib/community-data'
 import {
@@ -124,10 +126,13 @@ export function HomeSocial() {
   const {
     posts,
     publishPost,
+    deletePost,
+    deleteComment,
+    reportPost,
+    reportComment,
     getPostsByUserId,
     loading,
     error,
-    hasPublishedLive,
     refreshFeed,
   } = useSocialFeed()
 
@@ -252,38 +257,37 @@ export function HomeSocial() {
     const level = getLevelFromCompleted(next)
     const categoryMeta = getCategoryMeta(categoryId)
     const day = result.day ?? next
-    const shouldAutoPublish =
-      isMaintenanceDay(day) ||
-      result.privacy === 'public' ||
-      !hasPublishedLive
+    void day
+    const visibility =
+      result.privacy === 'network' ? 'network' : 'global'
 
     let welcomeApplied = false
-    if (shouldAutoPublish) {
-      try {
-        const published = await publishPost({
-          habit: categoryMeta.title,
-          accent: habitAccentFromCategory(categoryId),
-          caption:
-            result.caption ||
-            result.message ||
-            `${categoryMeta.title} · Día ${next} validado`,
-          level,
-          streakDays: next,
-          previewUrl: result.previewUrl,
-          imageFile: result.imageFile ?? null,
-          categoryId,
-        })
-        welcomeApplied = published.welcomeApplied
-      } catch (err) {
-        setToast(
-          err instanceof Error
-            ? `Foto validada, pero no se pudo publicar: ${err.message}`
-            : 'Foto validada, pero no se pudo publicar en la comunidad.',
-        )
-        setCaptureChallenge(null)
-        window.setTimeout(() => setToast(null), 6200)
-        return
-      }
+    // Solo publica tras el modal de personalización (caption + visibilidad).
+    try {
+      const published = await publishPost({
+        habit: categoryMeta.title,
+        accent: habitAccentFromCategory(categoryId),
+        caption:
+          result.caption ||
+          result.message ||
+          `${categoryMeta.title} · Día ${next} validado`,
+        visibility,
+        level,
+        streakDays: next,
+        previewUrl: result.previewUrl,
+        imageFile: result.imageFile ?? null,
+        categoryId,
+      })
+      welcomeApplied = published.welcomeApplied
+    } catch (err) {
+      setToast(
+        err instanceof Error
+          ? `Foto validada, pero no se pudo publicar: ${err.message}`
+          : 'Foto validada, pero no se pudo publicar en la comunidad.',
+      )
+      setCaptureChallenge(null)
+      window.setTimeout(() => setToast(null), 6200)
+      return
     }
 
     setToast(
@@ -324,15 +328,22 @@ export function HomeSocial() {
     profileUser?.id === me.id ? { ...me, ...profileOverrides } : profileUser
 
   const feedPosts = useMemo(() => {
+    const isNetworkVis = (v: CommunityPost['visibility']) =>
+      v === 'network' || v === 'private'
+    const isGlobalVis = (v: CommunityPost['visibility']) =>
+      !v || v === 'global' || v === 'public'
+
     if (communityTab === 'network') {
       return posts.filter(
-        (p) => p.userId === me.id || connectedIds.has(p.userId),
+        (p) =>
+          isNetworkVis(p.visibility) &&
+          (p.userId === me.id || connectedIds.has(p.userId)),
       )
     }
     if (communityTab === 'profile') {
       return posts.filter((p) => p.userId === me.id)
     }
-    return posts
+    return posts.filter((p) => isGlobalVis(p.visibility))
   }, [communityTab, posts, me.id, connectedIds])
 
   return (
@@ -539,11 +550,51 @@ export function HomeSocial() {
                       {formatCommunityLevelLine(post.habit, streak)} 🔥
                     </p>
                   </button>
-                  <span className="flex shrink-0 flex-col items-end gap-0.5">
+                  <span className="flex shrink-0 items-center gap-1.5">
                     <span className="inline-flex items-center gap-1 rounded-full border border-neon-yellow/40 bg-neon-yellow/10 px-2 py-0.5 font-mono text-[10px] text-neon-yellow">
                       <Flame className="size-3 fill-neon-yellow" aria-hidden="true" />
                       {streak}d racha
                     </span>
+                    <FeedContentMenu
+                      canDelete={post.userId === me.id}
+                      deleteLabel="Eliminar foto"
+                      reportLabel="Reportar foto"
+                      onDelete={async () => {
+                        if (
+                          !window.confirm(
+                            '¿Eliminar esta foto del feed? Esta acción no se puede deshacer.',
+                          )
+                        ) {
+                          return
+                        }
+                        try {
+                          await deletePost(post.id)
+                          setToast('Publicación eliminada')
+                          window.setTimeout(() => setToast(null), 3200)
+                        } catch (err) {
+                          setToast(
+                            err instanceof Error
+                              ? err.message
+                              : 'No se pudo eliminar la publicación',
+                          )
+                          window.setTimeout(() => setToast(null), 4500)
+                        }
+                      }}
+                      onReport={async () => {
+                        try {
+                          await reportPost(post.id)
+                          setToast('Gracias. Hemos recibido tu reporte.')
+                          window.setTimeout(() => setToast(null), 3600)
+                        } catch (err) {
+                          setToast(
+                            err instanceof Error
+                              ? err.message
+                              : 'No se pudo enviar el reporte',
+                          )
+                          window.setTimeout(() => setToast(null), 4500)
+                        }
+                      }}
+                    />
                   </span>
                 </div>
 
@@ -617,8 +668,12 @@ export function HomeSocial() {
                     <ul className="flex flex-col gap-2 rounded-2xl border border-white/5 bg-background/40 px-3 py-2.5">
                       {post.comments.map((comment) => {
                         const commenter = getUser(comment.userId)
+                        const isOwnComment = comment.userId === me.id
                         return (
-                          <li key={comment.id} className="flex gap-2 text-xs leading-relaxed">
+                          <li
+                            key={comment.id}
+                            className="flex items-start gap-2 text-xs leading-relaxed"
+                          >
                             <span
                               className={cn(
                                 'shrink-0 font-semibold',
@@ -628,7 +683,43 @@ export function HomeSocial() {
                               {commenter?.name ?? 'Comunidad'}
                               {commenter?.isBot ? ' · Bot' : ''}
                             </span>
-                            <span className="min-w-0 text-muted-foreground">{comment.text}</span>
+                            <span className="min-w-0 flex-1 text-muted-foreground">
+                              {comment.text}
+                            </span>
+                            <FeedContentMenu
+                              canDelete={isOwnComment}
+                              deleteLabel="Eliminar comentario"
+                              reportLabel="Reportar comentario"
+                              onDelete={async () => {
+                                if (!window.confirm('¿Eliminar este comentario?')) return
+                                try {
+                                  await deleteComment(post.id, comment.id)
+                                  setToast('Comentario eliminado')
+                                  window.setTimeout(() => setToast(null), 2800)
+                                } catch (err) {
+                                  setToast(
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'No se pudo eliminar el comentario',
+                                  )
+                                  window.setTimeout(() => setToast(null), 4500)
+                                }
+                              }}
+                              onReport={async () => {
+                                try {
+                                  await reportComment(comment.id)
+                                  setToast('Gracias. Hemos recibido tu reporte.')
+                                  window.setTimeout(() => setToast(null), 3600)
+                                } catch (err) {
+                                  setToast(
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'No se pudo enviar el reporte',
+                                  )
+                                  window.setTimeout(() => setToast(null), 4500)
+                                }
+                              }}
+                            />
                           </li>
                         )
                       })}
