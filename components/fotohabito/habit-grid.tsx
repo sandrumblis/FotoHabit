@@ -1,45 +1,203 @@
+'use client'
+
+import { useState } from 'react'
 import {
   Brain,
   CigaretteOff,
   Coins,
   Crown,
   Dumbbell,
-  Flower2,
   Moon,
+  Salad,
   Sparkles,
   WandSparkles,
 } from 'lucide-react'
 import { HabitCard, type Habit } from './habit-card'
+import { HabitChallengeModal } from './habit-challenge-modal'
+import {
+  HabitCelebrationModal,
+  type CelebrationKind,
+} from './habit-celebration-modal'
+import {
+  CaptureModal,
+  type CaptureChallengeContext,
+  type CaptureResult,
+} from './capture-modal'
+import { useHabitProgress } from './habit-progress-context'
+import {
+  getCategoryMeta,
+  getChallenge,
+  getCurrentDay,
+  type HabitCategoryId,
+} from '@/lib/habit-challenges'
+import {
+  getLevelForDay,
+  getLevelMeta,
+  isHabitCreatedMilestone,
+  isLevelMilestoneDay,
+  isMaintenanceDay,
+} from '@/lib/habit-levels'
 
-const freeHabits: Habit[] = [
-  { title: 'Actividad Física', subtitle: '30 retos diarios', icon: Dumbbell, color: 'var(--color-neon-cyan)', completed: 12 },
-  { title: 'Orden y Limpieza', subtitle: '30 retos diarios', icon: Sparkles, color: 'var(--color-neon-lime)', completed: 8 },
-  { title: 'Ahorro y Finanzas', subtitle: '30 retos diarios', icon: Coins, color: 'var(--color-neon-yellow)', completed: 19 },
-  { title: 'Enfoque y Mente', subtitle: '30 retos diarios', icon: Brain, color: 'var(--color-neon-purple)', completed: 5 },
+const freeHabitDefs: Omit<Habit, 'completed'>[] = [
+  {
+    id: 'actividad-fisica',
+    title: 'Actividad Física',
+    subtitle: 'Niveles infinitos',
+    icon: Dumbbell,
+    color: 'var(--color-neon-cyan)',
+  },
+  {
+    id: 'orden-limpieza',
+    title: 'Orden y Limpieza',
+    subtitle: 'Niveles infinitos',
+    icon: Sparkles,
+    color: 'var(--color-neon-yellow)',
+  },
+  {
+    id: 'comida-saludable',
+    title: 'Comida Saludable y Equilibrada',
+    subtitle: 'Niveles infinitos',
+    icon: Salad,
+    color: 'var(--color-neon-lime)',
+  },
+  {
+    id: 'enfoque-mente',
+    title: 'Enfoque y Mente',
+    subtitle: 'Niveles infinitos',
+    icon: Brain,
+    color: 'var(--color-neon-fuchsia)',
+  },
 ]
 
 const proHabits: Habit[] = [
-  { title: 'Sueño y Descanso', subtitle: '30 retos diarios', icon: Moon, locked: true },
-  { title: 'Belleza y Cuidado Personal', subtitle: '30 retos diarios', icon: Flower2, locked: true },
-  { title: 'Sin Humos', subtitle: '45 retos diarios', icon: CigaretteOff, locked: true },
+  {
+    id: 'sueno-descanso',
+    title: 'Sueño y Descanso',
+    subtitle: 'Niveles infinitos',
+    icon: Moon,
+    locked: true,
+  },
+  {
+    id: 'ahorro-finanzas',
+    title: 'Ahorro y Finanzas',
+    subtitle: 'Niveles infinitos',
+    icon: Coins,
+    locked: true,
+  },
+  {
+    id: 'sin-humos',
+    title: 'Sin Humos',
+    subtitle: 'Niveles infinitos',
+    icon: CigaretteOff,
+    locked: true,
+  },
   { title: 'Reto Personalizado', subtitle: 'Crea tu propio reto', icon: WandSparkles, locked: true },
 ]
 
+type CelebrationState = {
+  kind: CelebrationKind
+  level: number
+  day: number
+  categoryId: HabitCategoryId
+}
+
 export function HabitGrid() {
+  const { getCompleted, completeDay } = useHabitProgress()
+  const [active, setActive] = useState<{
+    categoryId: HabitCategoryId
+  } | null>(null)
+  const [captureOpen, setCaptureOpen] = useState(false)
+  const [captureChallenge, setCaptureChallenge] = useState<CaptureChallengeContext | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [celebration, setCelebration] = useState<CelebrationState | null>(null)
+
+  const freeHabits: Habit[] = freeHabitDefs.map((habit) => ({
+    ...habit,
+    completed: habit.id ? getCompleted(habit.id) : 0,
+  }))
+
+  function openCaptureForCategory(categoryId: HabitCategoryId) {
+    const completed = getCompleted(categoryId)
+    const day = getCurrentDay(completed)
+    const challenge = getChallenge(categoryId, day)
+    const categoryMeta = getCategoryMeta(categoryId)
+    setCaptureChallenge({
+      title: challenge.title,
+      description: challenge.description,
+      day: challenge.day,
+      categoryId,
+      objective: categoryMeta.title,
+      maintenance: isMaintenanceDay(day),
+    })
+    setCaptureOpen(true)
+  }
+
+  function handleValidated(result: CaptureResult) {
+    if (!result.valid || !result.categoryId) return
+    const categoryId = result.categoryId as HabitCategoryId
+    const next = completeDay(categoryId)
+    setSuccessMessage(result.message)
+    setCaptureChallenge(null)
+
+    if (isHabitCreatedMilestone(next)) {
+      setCelebration({
+        kind: 'habit-created',
+        level: getLevelForDay(next),
+        day: next,
+        categoryId,
+      })
+    } else if (isLevelMilestoneDay(next)) {
+      setCelebration({
+        kind: 'level-up',
+        level: getLevelForDay(next),
+        day: next,
+        categoryId,
+      })
+    } else {
+      setActive({ categoryId })
+    }
+
+    window.setTimeout(() => setSuccessMessage(null), 5200)
+  }
+
+  function closeCelebration() {
+    const cat = celebration?.categoryId
+    setCelebration(null)
+    if (cat) setActive({ categoryId: cat })
+  }
+
   return (
     <div className="flex flex-col gap-10">
+      {successMessage ? (
+        <div
+          role="status"
+          className="rounded-2xl border border-neon-lime/40 bg-neon-lime/10 px-4 py-3 text-sm leading-relaxed text-neon-lime shadow-[0_0_28px_-10px_var(--color-neon-lime)]"
+        >
+          {successMessage}
+        </div>
+      ) : null}
+
       <section aria-labelledby="free-title" className="flex flex-col gap-4">
         <div className="flex items-end justify-between gap-4">
           <div>
             <h2 id="free-title" className="text-lg font-semibold tracking-tight">
               Tus objetivos
             </h2>
-            <p className="text-sm text-muted-foreground">4 categorías activas</p>
+            <p className="text-sm text-muted-foreground">
+              4 categorías activas · 21 días + niveles infinitos
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
           {freeHabits.map((habit) => (
-            <HabitCard key={habit.title} habit={habit} />
+            <HabitCard
+              key={habit.title}
+              habit={habit}
+              onOpenChallenge={(h) => {
+                if (!h.id) return
+                setActive({ categoryId: h.id })
+              }}
+            />
           ))}
         </div>
       </section>
@@ -67,6 +225,45 @@ export function HabitGrid() {
           ))}
         </div>
       </section>
+
+      <HabitChallengeModal
+        open={active !== null}
+        categoryId={active?.categoryId ?? null}
+        completed={active ? getCompleted(active.categoryId) : 0}
+        onClose={() => setActive(null)}
+        onCapture={() => {
+          if (!active) return
+          const categoryId = active.categoryId
+          setActive(null)
+          openCaptureForCategory(categoryId)
+        }}
+      />
+
+      <CaptureModal
+        open={captureOpen}
+        challenge={captureChallenge}
+        onClose={() => {
+          setCaptureOpen(false)
+          setCaptureChallenge(null)
+        }}
+        onConfirm={handleValidated}
+      />
+
+      <HabitCelebrationModal
+        open={celebration !== null}
+        kind={celebration?.kind ?? null}
+        level={celebration?.level ?? 1}
+        day={celebration?.day ?? 0}
+        categoryTitle={
+          celebration
+            ? `${getCategoryMeta(celebration.categoryId).title} · ${getLevelMeta(celebration.level).name}`
+            : ''
+        }
+        glowColor={
+          celebration ? getCategoryMeta(celebration.categoryId).color : undefined
+        }
+        onClose={closeCelebration}
+      />
     </div>
   )
 }

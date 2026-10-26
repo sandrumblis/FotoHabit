@@ -7,13 +7,13 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
-  title: 'FotoHábito — Hábitos diarios validados por fotos',
+  title: 'FotoHabit — 21 Días Crean el Hábito',
   description:
     'Construye hábitos reales: completa retos diarios y valida tu progreso con una foto cada día.',
   generator: 'v0.app',
   icons: {
-    icon: '/images/fotohabito-logo.jpg',
-    apple: '/images/fotohabito-logo.jpg',
+    icon: '/images/icono-camara.png',
+    apple: '/images/icono-camara.png',
   },
 }
 

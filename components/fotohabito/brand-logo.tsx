@@ -1,26 +1,93 @@
-import Image from 'next/image'
+import { cn } from '@/lib/utils'
 
-export function BrandLogo() {
+type BrandLogoProps = {
+  size?: 'sm' | 'md'
+  /** horizontal (header) | stacked (auth) */
+  layout?: 'horizontal' | 'stacked'
+  /** @deprecated Wordmark layout is fixed */
+  showWordmark?: boolean
+  className?: string
+}
+
+/**
+ * Isologo: cámara + wordmark FOTOHABIT (imagen) + eslogan tipográfico en código.
+ */
+export function BrandLogo({
+  size = 'md',
+  layout = 'horizontal',
+  className,
+}: BrandLogoProps) {
+  const stacked = layout === 'stacked'
+  const iconH = stacked
+    ? size === 'sm'
+      ? 'h-[4.5rem] w-auto'
+      : 'h-24 w-auto sm:h-28'
+    : size === 'sm'
+      ? 'h-10'
+      : 'h-12 sm:h-14'
+  const wordH = stacked
+    ? size === 'sm'
+      ? 'h-8'
+      : 'h-10 sm:h-11'
+    : size === 'sm'
+      ? 'h-6'
+      : 'h-7 sm:h-8'
+
   return (
-    <div className="flex items-center gap-3">
-      {/* The source JPG has a baked-in checkerboard, so only the circular lens emblem is cropped out. */}
-      <div className="relative size-11 shrink-0 overflow-hidden rounded-full shadow-[0_0_24px_-4px_rgba(34,211,238,0.55)] sm:size-12">
-        <Image
-          src="/images/fotohabito-logo.jpg"
-          alt=""
-          width={1024}
-          height={1024}
-          priority
-          className="absolute max-w-none"
-          style={{ width: '200.8%', height: 'auto', left: '-50.4%', top: '-38.6%' }}
+    <div
+      className={cn(
+        'overflow-visible bg-transparent',
+        stacked
+          ? 'mx-auto flex w-full max-w-xs flex-col items-center justify-center gap-3.5'
+          : 'flex items-center gap-3',
+        className,
+      )}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/images/icono-camara.png?v=fh-parts-2"
+        alt=""
+        width={459}
+        height={384}
+        decoding="async"
+        aria-hidden="true"
+        className={cn(
+          iconH,
+          'shrink-0 border-0 bg-transparent object-contain p-0',
+          'shadow-none outline-none ring-0 filter-none',
+          '[image-rendering:-webkit-optimize-contrast]',
+        )}
+      />
+
+      <div
+        className={cn(
+          'flex min-w-0 flex-col justify-center gap-0.5 bg-transparent leading-none',
+          stacked ? 'items-center' : 'items-center',
+        )}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/texto-fotohabit.png?v=fh-word-1"
+          alt="FotoHabit"
+          width={631}
+          height={102}
+          decoding="async"
+          className={cn(
+            wordH,
+            'w-auto max-w-full border-0 bg-transparent object-contain object-center p-0',
+            'shadow-none outline-none ring-0 filter-none',
+            '[image-rendering:-webkit-optimize-contrast]',
+          )}
         />
-      </div>
-      <div className="flex flex-col leading-none">
-        <span className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-          FotoHábito
-        </span>
-        <span className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          Hábitos con prueba
+        <span
+          className={cn(
+            'text-center font-medium tracking-wide text-cyan-200/90',
+            'drop-shadow-[0_0_8px_rgba(0,242,254,0.5)]',
+            '[text-shadow:0_0_6px_rgba(0,242,254,0.55),0_0_12px_rgba(188,19,254,0.35)]',
+            size === 'sm' ? 'text-[10px] sm:text-xs' : 'text-xs sm:text-sm',
+          )}
+        >
+          21 Días Crean el Hábito
         </span>
       </div>
     </div>
