@@ -191,12 +191,29 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     onClose()
   }
 
-  function acceptFile(file: File | undefined) {
+  async function acceptFile(file: File | undefined) {
     if (!file || !file.type.startsWith('image/')) return
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    fileRef.current = file
-    setPreviewUrl(URL.createObjectURL(file))
-    setFileName(file.name || `fotohabit-${Date.now()}.jpg`)
+    if (
+      previewUrl &&
+      previewUrl.startsWith('blob:') &&
+      previewUrl !== transferredPreviewRef.current
+    ) {
+      URL.revokeObjectURL(previewUrl)
+    }
+    // Copia durable en memoria: sobrevive al cierre del modal (evita Failed to fetch).
+    let durable = file
+    try {
+      const buffer = await file.arrayBuffer()
+      durable = new File([buffer], file.name || `fotohabit-${Date.now()}.jpg`, {
+        type: file.type || 'image/jpeg',
+        lastModified: Date.now(),
+      })
+    } catch {
+      durable = file
+    }
+    fileRef.current = durable
+    setPreviewUrl(URL.createObjectURL(durable))
+    setFileName(durable.name || `fotohabit-${Date.now()}.jpg`)
     setErrorMessage(null)
     stopCamera()
     setStep('preview')
@@ -220,7 +237,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
     )
     if (!blob) return
     const file = new File([blob], `fotohabit-capture-${Date.now()}.jpg`, { type: 'image/jpeg' })
-    acceptFile(file)
+    await acceptFile(file)
   }
 
   async function flipCamera() {
@@ -388,7 +405,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
         type="file"
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
         className="sr-only"
-        onChange={(e) => acceptFile(e.target.files?.[0])}
+        onChange={(e) => void acceptFile(e.target.files?.[0])}
       />
       <input
         ref={cameraFileRef}
@@ -396,7 +413,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
         capture="environment"
         className="sr-only"
-        onChange={(e) => acceptFile(e.target.files?.[0])}
+        onChange={(e) => void acceptFile(e.target.files?.[0])}
       />
 
       {/* Top bar */}

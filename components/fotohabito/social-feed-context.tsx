@@ -46,6 +46,68 @@ type SocialFeedContextValue = {
 
 const SocialFeedContext = createContext<SocialFeedContextValue | null>(null)
 
+function friendlyPublishMessage(err: unknown): string {
+  const raw =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : 'No se pudo publicar en el feed'
+  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(raw)) {
+    return 'No se pudo publicar (conexión o Storage). Comprueba el bucket «posts» en Supabase y tu red, e inténtalo de nuevo.'
+  }
+  return raw
+}
+
+async function publishViaServerApi(input: {
+  userId: string
+  displayName: string
+  habitTitle: string
+  categoryKey?: string
+  caption: string
+  streakDays: number
+  level: number
+  image: Blob
+}): Promise<CommunityPost> {
+  const form = new FormData()
+  const file =
+    input.image instanceof File
+      ? input.image
+      : new File([input.image], `fotohabit-${Date.now()}.jpg`, {
+          type: input.image.type || 'image/jpeg',
+        })
+  form.append('image', file)
+  form.append('caption', input.caption)
+  form.append('habitTitle', input.habitTitle)
+  form.append('displayName', input.displayName)
+  form.append('streakDays', String(input.streakDays))
+  form.append('level', String(input.level))
+  if (input.categoryKey) form.append('categoryKey', input.categoryKey)
+
+  const res = await fetch('/api/publish-post', {
+    method: 'POST',
+    body: form,
+    credentials: 'same-origin',
+  })
+
+  const raw = await res.text()
+  let data: { ok?: boolean; post?: CommunityPost; message?: string } = {}
+  try {
+    data = raw ? (JSON.parse(raw) as typeof data) : {}
+  } catch {
+    throw new Error(
+      res.ok
+        ? 'Respuesta inválida del servidor al publicar'
+        : 'No se pudo publicar (respuesta no JSON del servidor)',
+    )
+  }
+
+  if (!res.ok || !data.ok || !data.post) {
+    throw new Error(data.message || `No se pudo publicar (${res.status})`)
+  }
+  return data.post
+}
+
 export function SocialFeedProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth()
   const [posts, setPosts] = useState<CommunityPost[]>([])
@@ -78,20 +140,32 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     void refreshFeed()
 
-    const supabase = createClient()
-    const channel = supabase
-      .channel('public:posts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'posts' },
-        () => {
-          void refreshFeed()
-        },
-      )
-      .subscribe()
+    let channel: ReturnType<ReturnType<typeof createClient>['channel']> | null = null
+    try {
+      const supabase = createClient()
+      channel = supabase
+        .channel('public:posts')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'posts' },
+          () => {
+            void refreshFeed()
+          },
+        )
+        .subscribe()
+    } catch (err) {
+      console.warn('[social-feed] realtime skipped', err)
+    }
 
     return () => {
-      void supabase.removeChannel(channel)
+      if (channel) {
+        try {
+          const supabase = createClient()
+          void supabase.removeChannel(channel)
+        } catch {
+          /* noop */
+        }
+      }
     }
   }, [isAuthenticated, refreshFeed])
 
@@ -101,19 +175,52 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
       const image = input.imageFile ?? input.previewUrl
       if (!image) throw new Error('Falta la foto validada')
 
+      const wasFirst = !hasPublishedLive
+
       try {
-        const wasFirst = !hasPublishedLive
-        const post = await publishValidatedPhoto({
-          userId: user.id,
-          displayName: user.name,
-          habitTitle: input.habit,
-          categoryKey: input.categoryId,
-          accent: input.accent,
-          caption: input.caption,
-          streakDays: input.streakDays,
-          level: input.level,
-          image,
-        })
+        let post: CommunityPost
+
+        // 1) Preferir API servidor (más fiable en Vercel / evita Failed to fetch de Storage en cliente).
+        if (typeof image !== 'string') {
+          try {
+            post = await publishViaServerApi({
+              userId: user.id,
+              displayName: user.name,
+              habitTitle: input.habit,
+              categoryKey: input.categoryId,
+              caption: input.caption,
+              streakDays: input.streakDays,
+              level: input.level,
+              image,
+            })
+          } catch (apiErr) {
+            console.warn('[FotoHabit] publish API failed, trying client path', apiErr)
+            post = await publishValidatedPhoto({
+              userId: user.id,
+              displayName: user.name,
+              habitTitle: input.habit,
+              categoryKey: input.categoryId,
+              accent: input.accent,
+              caption: input.caption,
+              streakDays: input.streakDays,
+              level: input.level,
+              image,
+            })
+          }
+        } else {
+          // data:/blob: — cliente (con mensajes claros si blob revocado).
+          post = await publishValidatedPhoto({
+            userId: user.id,
+            displayName: user.name,
+            habitTitle: input.habit,
+            categoryKey: input.categoryId,
+            accent: input.accent,
+            caption: input.caption,
+            streakDays: input.streakDays,
+            level: input.level,
+            image,
+          })
+        }
 
         setPosts((prev) => {
           const without = prev.filter((p) => p.id !== post.id)
@@ -125,10 +232,9 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
         return { post, welcomeApplied: wasFirst }
       } catch (err) {
         console.error('[FotoHabit] publishPost failed', err)
-        const message =
-          err instanceof Error ? err.message : 'No se pudo publicar en el feed'
+        const message = friendlyPublishMessage(err)
         setError(message)
-        throw err instanceof Error ? err : new Error(message)
+        throw new Error(message)
       }
     },
     [user, hasPublishedLive],

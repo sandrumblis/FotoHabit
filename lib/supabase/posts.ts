@@ -240,6 +240,21 @@ async function resolveImageBlob(image: string | Blob): Promise<Blob> {
     return dataUrlToBlob(image)
   }
 
+  // blob: revocado → Failed to fetch; mensaje claro.
+  if (image.startsWith('blob:')) {
+    try {
+      const res = await fetch(image)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.blob()
+    } catch (err) {
+      throw toError(
+        'upload.resolveBlob',
+        err,
+        'La vista previa de la foto ya no está disponible. Vuelve a capturar o elige la imagen de nuevo.',
+      )
+    }
+  }
+
   try {
     const res = await fetch(image)
     if (!res.ok) {
@@ -250,8 +265,41 @@ async function resolveImageBlob(image: string | Blob): Promise<Blob> {
     throw toError(
       'upload.resolveBlob',
       err,
-      'No se pudo leer la foto para subirla (¿blob revocado?).',
+      'No se pudo leer la foto para subirla.',
     )
+  }
+}
+
+/** Reduce peso antes de Storage (evita timeouts / Failed to fetch en móvil). */
+async function compressImageBlob(blob: Blob, maxEdge = 1600, quality = 0.82): Promise<Blob> {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return blob
+  if (!blob.type.startsWith('image/') || blob.type.includes('gif')) return blob
+
+  try {
+    const bitmap = await createImageBitmap(blob)
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
+    if (scale >= 0.98 && blob.size < 900_000) {
+      bitmap.close()
+      return blob
+    }
+    const w = Math.max(1, Math.round(bitmap.width * scale))
+    const h = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      bitmap.close()
+      return blob
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h)
+    bitmap.close()
+    const compressed = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', quality),
+    )
+    return compressed && compressed.size > 0 ? compressed : blob
+  } catch {
+    return blob
   }
 }
 
@@ -259,10 +307,11 @@ export async function uploadPostImage(userId: string, image: string | Blob) {
   const supabase = createClient()
 
   try {
-    const blob = await resolveImageBlob(image)
+    let blob = await resolveImageBlob(image)
     if (!blob || blob.size === 0) {
       throw new Error('La imagen está vacía')
     }
+    blob = await compressImageBlob(blob)
 
     const ext = blob.type.includes('png')
       ? 'png'
@@ -278,10 +327,16 @@ export async function uploadPostImage(userId: string, image: string | Blob) {
     })
 
     if (uploadError) {
+      const hint =
+        /bucket|not found|does not exist/i.test(uploadError.message)
+          ? ' Crea el bucket público «posts» en Supabase Storage.'
+          : /policy|row-level|jwt|authorized/i.test(uploadError.message)
+            ? ' Revisa las políticas RLS del bucket «posts» (upload autenticado).'
+            : ''
       throw toError(
         'upload.storage',
         uploadError,
-        `No se pudo subir la imagen al bucket «${POSTS_BUCKET}»`,
+        `No se pudo subir la imagen al bucket «${POSTS_BUCKET}».${hint}`,
       )
     }
 

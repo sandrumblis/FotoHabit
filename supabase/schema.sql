@@ -44,6 +44,9 @@ create index if not exists daily_validations_user_date_idx
 -- Storage buckets públicos (Dashboard → Storage si no existen)
 -- insert into storage.buckets (id, name, public) values ('posts', 'posts', true);
 -- insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true);
--- Políticas sugeridas: lectura pública; escritura autenticada en carpeta {auth.uid()}/**
+-- Políticas sugeridas Storage (SQL):
+--   create policy "posts public read" on storage.objects for select using (bucket_id = 'posts');
+--   create policy "posts auth upload" on storage.objects for insert to authenticated
+--     with check (bucket_id = 'posts' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- Si tus FKs tienen otros nombres, posts.ts prueba también el hint :user_id / :habit_id.

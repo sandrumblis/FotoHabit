@@ -387,14 +387,7 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
         void persistDailyOnServer(id)
       }
 
-      setActiveCategoryIds((prev) => {
-        if (prev.includes(id)) return prev
-        const pro = Boolean(opts?.isPro)
-        if (isProCategory(id) && !pro) return prev
-        if (!pro && prev.length >= FREE_ACTIVE_OBJECTIVES_LIMIT) return prev
-        return [...prev, id]
-      })
-
+      // Solo suma progreso; no auto-activa objetivos (eso es «Empezar este objetivo»).
       return { ok: true, next }
     },
     [todayValidated, userId],
