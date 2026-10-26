@@ -1,7 +1,8 @@
 import type { HabitAccent } from '@/lib/community-data'
 import { createClient } from './client'
 import type { HabitRow, PostRow, PostWithRelations, ProfileRow } from './database.types'
-import { mapPostRow } from './mappers'
+import { mapPostRow, profileToCommunityUser, accentFromCategory } from './mappers'
+import type { CommunityPost } from '@/lib/community-data'
 
 const POSTS_BUCKET = 'posts'
 
@@ -18,6 +19,39 @@ function dataUrlToBlob(dataUrl: string): Blob {
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return new Blob([bytes], { type: mime })
+}
+
+function logPublishError(stage: string, err: unknown) {
+  const detail =
+    err && typeof err === 'object'
+      ? {
+          message: 'message' in err ? String((err as { message?: unknown }).message) : undefined,
+          code: 'code' in err ? String((err as { code?: unknown }).code) : undefined,
+          details: 'details' in err ? String((err as { details?: unknown }).details) : undefined,
+          hint: 'hint' in err ? String((err as { hint?: unknown }).hint) : undefined,
+          status: 'status' in err ? (err as { status?: unknown }).status : undefined,
+          name: err instanceof Error ? err.name : undefined,
+          stack: err instanceof Error ? err.stack : undefined,
+        }
+      : { raw: String(err) }
+  console.error(`[FotoHabit publish · ${stage}]`, detail, err)
+}
+
+function toError(stage: string, err: unknown, fallback: string): Error {
+  logPublishError(stage, err)
+  if (err instanceof Error) {
+    const msg = err.message || fallback
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      return new Error(
+        `${fallback} (red o blob no disponible). Revisa conexión, bucket «posts» y políticas RLS.`,
+      )
+    }
+    return new Error(msg)
+  }
+  if (err && typeof err === 'object' && 'message' in err) {
+    return new Error(String((err as { message: unknown }).message) || fallback)
+  }
+  return new Error(fallback)
 }
 
 /**
@@ -42,8 +76,14 @@ async function hydratePosts(posts: PostRow[]): Promise<PostWithRelations[]> {
       : Promise.resolve({ data: [] as HabitRow[], error: null }),
   ])
 
-  if (profilesRes.error) throw new Error(profilesRes.error.message)
-  if (habitsRes.error) throw new Error(habitsRes.error.message)
+  if (profilesRes.error) {
+    logPublishError('hydrate.profiles', profilesRes.error)
+    throw new Error(profilesRes.error.message)
+  }
+  if (habitsRes.error) {
+    logPublishError('hydrate.habits', habitsRes.error)
+    throw new Error(habitsRes.error.message)
+  }
 
   const profilesById = new Map(
     ((profilesRes.data as ProfileRow[] | null) ?? []).map((p) => [p.id, p]),
@@ -67,55 +107,57 @@ export async function ensureProfile(input: {
   const supabase = createClient()
   const username = input.displayName.trim().slice(0, 40) || 'Usuario FotoHabit'
 
-  // Perfil existente: no inventar progreso ni resetear level/habits.
-  const { data: existing, error: readError } = await supabase
-    .from('profiles')
-    .select('id, username')
-    .eq('id', input.id)
-    .maybeSingle()
+  try {
+    const { data: existing, error: readError } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .eq('id', input.id)
+      .maybeSingle()
 
-  if (readError) throw new Error(readError.message)
+    if (readError) throw toError('ensureProfile.read', readError, 'No se pudo leer el perfil')
 
-  if (existing?.id) {
-    // Solo actualizar username si viene vacío en DB.
-    if (!existing.username?.trim() && username) {
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ username })
-        .eq('id', input.id)
-      if (updateError) throw new Error(updateError.message)
-    }
-    return
-  }
-
-  // Perfil nuevo: limpio (level 1, sin hábitos ni rachas — los habits se crean al publicar).
-  const insertRow: { id: string; username: string; level: number } = {
-    id: input.id,
-    username,
-    level: 1,
-  }
-
-  const { error } = await supabase.from('profiles').insert(insertRow)
-  if (error) {
-    // Carrera con trigger de auth: ya existe → ok.
-    if (error.code === '23505' || error.message.toLowerCase().includes('duplicate')) {
-      return
-    }
-    // Si `level` no está en cache del schema, insertar solo id+username.
-    if (error.message.toLowerCase().includes('level')) {
-      const { error: retryError } = await supabase
-        .from('profiles')
-        .insert({ id: insertRow.id, username: insertRow.username })
-      if (
-        retryError &&
-        retryError.code !== '23505' &&
-        !retryError.message.toLowerCase().includes('duplicate')
-      ) {
-        throw new Error(retryError.message)
+    if (existing?.id) {
+      if (!existing.username?.trim() && username) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ username })
+          .eq('id', input.id)
+        if (updateError) {
+          throw toError('ensureProfile.update', updateError, 'No se pudo actualizar el perfil')
+        }
       }
       return
     }
-    throw new Error(error.message)
+
+    const insertRow: { id: string; username: string; level: number } = {
+      id: input.id,
+      username,
+      level: 1,
+    }
+
+    const { error } = await supabase.from('profiles').insert(insertRow)
+    if (error) {
+      if (error.code === '23505' || error.message.toLowerCase().includes('duplicate')) {
+        return
+      }
+      if (error.message.toLowerCase().includes('level')) {
+        const { error: retryError } = await supabase
+          .from('profiles')
+          .insert({ id: insertRow.id, username: insertRow.username })
+        if (
+          retryError &&
+          retryError.code !== '23505' &&
+          !retryError.message.toLowerCase().includes('duplicate')
+        ) {
+          throw toError('ensureProfile.insert.retry', retryError, 'No se pudo crear el perfil')
+        }
+        return
+      }
+      throw toError('ensureProfile.insert', error, 'No se pudo crear el perfil')
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('No se pudo')) throw err
+    throw toError('ensureProfile', err, 'Error al sincronizar el perfil')
   }
 }
 
@@ -127,88 +169,220 @@ export async function ensureHabit(input: {
 }) {
   const supabase = createClient()
 
-  if (input.categoryKey) {
-    const { data: existing } = await supabase
-      .from('habits')
-      .select('id')
-      .eq('user_id', input.userId)
-      .eq('category', input.categoryKey)
-      .maybeSingle()
-
-    if (existing?.id) {
-      await supabase
+  try {
+    if (input.categoryKey) {
+      const { data: existing, error: findError } = await supabase
         .from('habits')
-        .update({
-          title: input.title,
-          streak_days: input.streakDays ?? 0,
-        })
-        .eq('id', existing.id)
-      return existing.id as string
-    }
-  }
+        .select('id')
+        .eq('user_id', input.userId)
+        .eq('category', input.categoryKey)
+        .maybeSingle()
 
-  const { data, error } = await supabase
-    .from('habits')
-    .insert({
+      if (findError) {
+        logPublishError('ensureHabit.find', findError)
+      }
+
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from('habits')
+          .update({
+            title: input.title,
+            streak_days: input.streakDays ?? 0,
+          })
+          .eq('id', existing.id)
+        if (updateError) {
+          logPublishError('ensureHabit.update', updateError)
+        }
+        return existing.id as string
+      }
+    }
+
+    const payload = {
       user_id: input.userId,
       title: input.title,
       category: input.categoryKey ?? null,
       streak_days: input.streakDays ?? 0,
-    })
-    .select('id')
-    .single()
+    }
 
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el hábito')
-  return data.id as string
+    const { data, error } = await supabase.from('habits').insert(payload).select('id').single()
+
+    if (error || !data) {
+      // Reintento mínimo por si `category` no existe en algún entorno.
+      if (error?.message?.toLowerCase().includes('category')) {
+        const { data: retry, error: retryError } = await supabase
+          .from('habits')
+          .insert({
+            user_id: input.userId,
+            title: input.title,
+            streak_days: input.streakDays ?? 0,
+          })
+          .select('id')
+          .single()
+        if (retryError || !retry) {
+          throw toError('ensureHabit.insert.retry', retryError ?? error, 'No se pudo crear el hábito')
+        }
+        return retry.id as string
+      }
+      throw toError('ensureHabit.insert', error, 'No se pudo crear el hábito')
+    }
+
+    return data.id as string
+  } catch (err) {
+    if (err instanceof Error) throw err
+    throw toError('ensureHabit', err, 'No se pudo crear el hábito')
+  }
+}
+
+async function resolveImageBlob(image: string | Blob): Promise<Blob> {
+  if (typeof image !== 'string') return image
+
+  if (image.startsWith('data:')) {
+    return dataUrlToBlob(image)
+  }
+
+  try {
+    const res = await fetch(image)
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} al leer la imagen`)
+    }
+    return await res.blob()
+  } catch (err) {
+    throw toError(
+      'upload.resolveBlob',
+      err,
+      'No se pudo leer la foto para subirla (¿blob revocado?).',
+    )
+  }
 }
 
 export async function uploadPostImage(userId: string, image: string | Blob) {
   const supabase = createClient()
-  const blob =
-    typeof image === 'string'
-      ? image.startsWith('data:')
-        ? dataUrlToBlob(image)
-        : await (await fetch(image)).blob()
-      : image
 
-  const ext = blob.type.includes('png') ? 'png' : 'jpg'
-  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  try {
+    const blob = await resolveImageBlob(image)
+    if (!blob || blob.size === 0) {
+      throw new Error('La imagen está vacía')
+    }
 
-  const { error: uploadError } = await supabase.storage.from(POSTS_BUCKET).upload(path, blob, {
-    cacheControl: '3600',
-    upsert: false,
-    contentType: blob.type || 'image/jpeg',
-  })
+    const ext = blob.type.includes('png')
+      ? 'png'
+      : blob.type.includes('webp')
+        ? 'webp'
+        : 'jpg'
+    const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
 
-  if (uploadError) throw new Error(uploadError.message)
+    const { error: uploadError } = await supabase.storage.from(POSTS_BUCKET).upload(path, blob, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: blob.type || 'image/jpeg',
+    })
 
-  const { data } = supabase.storage.from(POSTS_BUCKET).getPublicUrl(path)
-  if (!data?.publicUrl) throw new Error('No se pudo obtener la URL pública de la imagen')
-  return data.publicUrl
+    if (uploadError) {
+      throw toError(
+        'upload.storage',
+        uploadError,
+        `No se pudo subir la imagen al bucket «${POSTS_BUCKET}»`,
+      )
+    }
+
+    const { data } = supabase.storage.from(POSTS_BUCKET).getPublicUrl(path)
+    if (!data?.publicUrl) throw new Error('No se pudo obtener la URL pública de la imagen')
+    return data.publicUrl
+  } catch (err) {
+    if (err instanceof Error) throw err
+    throw toError('upload', err, 'Error al subir la imagen')
+  }
+}
+
+function fallbackCommunityPost(
+  row: PostRow,
+  extras?: { displayName?: string; habitTitle?: string; categoryKey?: string; streakDays?: number; level?: number },
+): CommunityPost {
+  const accent = accentFromCategory(extras?.categoryKey)
+  const author = profileToCommunityUser(
+    {
+      id: row.user_id,
+      username: extras?.displayName ?? 'Usuario FotoHabit',
+      avatar_url: null,
+      level: extras?.level ?? 1,
+      created_at: row.created_at,
+    },
+    {
+      streak: extras?.streakDays ?? 0,
+      primaryHabit: extras?.habitTitle ?? 'Hábito',
+      accent,
+    },
+  )
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    habit: extras?.habitTitle ?? 'Hábito',
+    accent,
+    caption: row.caption ?? '',
+    time: 'ahora',
+    likes: 0,
+    visibility: 'public',
+    level: extras?.level,
+    streakDays: extras?.streakDays,
+    imageUrl: row.image_url,
+    previewUrl: null,
+    neonFire: false,
+    comments: [],
+    author,
+  }
 }
 
 export async function createPostRecord(input: {
   userId: string
-  habitId: string
+  habitId: string | null
   imageUrl: string
   caption: string
+  /** Fallback si la hidratación falla (RLS / perfil). */
+  fallback?: {
+    displayName?: string
+    habitTitle?: string
+    categoryKey?: string
+    streakDays?: number
+    level?: number
+  }
 }) {
   const supabase = createClient()
-  const { data, error } = await supabase
-    .from('posts')
-    .insert({
-      user_id: input.userId,
-      habit_id: input.habitId,
-      image_url: input.imageUrl,
-      caption: input.caption,
-    })
-    .select(POST_COLUMNS)
-    .single()
 
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo crear la publicación')
+  // Solo columnas reales de `posts` (nunca accent / display_name).
+  const insertPayload = {
+    user_id: input.userId,
+    habit_id: input.habitId,
+    image_url: input.imageUrl,
+    caption: input.caption || null,
+  }
 
-  const [hydrated] = await hydratePosts([data as PostRow])
-  return mapPostRow(hydrated)
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .insert(insertPayload)
+      .select(POST_COLUMNS)
+      .single()
+
+    if (error || !data) {
+      throw toError('createPost.insert', error, 'No se pudo crear la publicación en posts')
+    }
+
+    const row = data as PostRow
+
+    try {
+      const [hydrated] = await hydratePosts([row])
+      const mapped = mapPostRow(hydrated)
+      if (mapped) return mapped
+    } catch (hydrateErr) {
+      logPublishError('createPost.hydrate', hydrateErr)
+    }
+
+    return fallbackCommunityPost(row, input.fallback)
+  } catch (err) {
+    if (err instanceof Error) throw err
+    throw toError('createPost', err, 'Error al crear la publicación')
+  }
 }
 
 export async function fetchCommunityFeed() {
@@ -219,7 +393,10 @@ export async function fetchCommunityFeed() {
     .order('created_at', { ascending: false })
     .limit(80)
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    logPublishError('fetchCommunityFeed', error)
+    throw new Error(error.message)
+  }
 
   const hydrated = await hydratePosts((data as PostRow[] | null) ?? [])
   return hydrated.map(mapPostRow).filter((p): p is NonNullable<typeof p> => Boolean(p))
@@ -230,7 +407,7 @@ export async function publishValidatedPhoto(input: {
   displayName: string
   habitTitle: string
   categoryKey?: string
-  /** Solo UI local; nunca se escribe en profiles (la tabla no tiene accent). */
+  /** Solo UI local; nunca se escribe en profiles/posts. */
   accent?: HabitAccent
   caption: string
   streakDays: number
@@ -239,27 +416,41 @@ export async function publishValidatedPhoto(input: {
 }) {
   void input.accent
 
-  await ensureProfile({
-    id: input.userId,
-    displayName: input.displayName,
-    level: input.level,
-  })
+  try {
+    await ensureProfile({
+      id: input.userId,
+      displayName: input.displayName,
+    })
 
-  const habitId = await ensureHabit({
-    userId: input.userId,
-    title: input.habitTitle,
-    categoryKey: input.categoryKey,
-    streakDays: input.streakDays,
-  })
+    const habitId = await ensureHabit({
+      userId: input.userId,
+      title: input.habitTitle,
+      categoryKey: input.categoryKey,
+      streakDays: input.streakDays,
+    })
 
-  const imageUrl = await uploadPostImage(input.userId, input.image)
-  const post = await createPostRecord({
-    userId: input.userId,
-    habitId,
-    imageUrl,
-    caption: input.caption,
-  })
+    const imageUrl = await uploadPostImage(input.userId, input.image)
 
-  if (!post) throw new Error('Publicación creada pero sin datos de perfil')
-  return post
+    const post = await createPostRecord({
+      userId: input.userId,
+      habitId,
+      imageUrl,
+      caption: input.caption,
+      fallback: {
+        displayName: input.displayName,
+        habitTitle: input.habitTitle,
+        categoryKey: input.categoryKey,
+        streakDays: input.streakDays,
+        level: input.level,
+      },
+    })
+
+    if (!post) throw new Error('Publicación creada pero sin datos de perfil')
+    return post
+  } catch (err) {
+    logPublishError('publishValidatedPhoto', err)
+    throw err instanceof Error
+      ? err
+      : new Error('No se pudo publicar la foto en el feed')
+  }
 }

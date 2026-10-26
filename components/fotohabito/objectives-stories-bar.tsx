@@ -56,7 +56,13 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
 }
 
 export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesStoriesBarProps) {
-  const { getCompleted, isTodayValidated, activeCategoryIds } = useHabitProgress()
+  const {
+    getCompleted,
+    isTodayValidated,
+    activeCategoryIds,
+    hasCompletedDailyHabit,
+    dailyValidationMessage,
+  } = useHabitProgress()
   const scrollerRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
     active: boolean
@@ -182,7 +188,9 @@ export function ObjectivesStoriesBar({ onSelect, onAddGoalClick }: ObjectivesSto
           <p className="max-w-[18rem] text-pretty text-xs leading-relaxed text-muted-foreground sm:max-w-sm">
             {activeObjectives.length === 0
               ? 'Elige un hábito y valida una foto al día para subir de nivel.'
-              : 'Toca un anillo para abrir el reto de hoy.'}
+              : hasCompletedDailyHabit
+                ? dailyValidationMessage
+                : 'Toca un anillo para abrir el reto de hoy.'}
           </p>
         </div>
 

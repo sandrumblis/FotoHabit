@@ -123,7 +123,12 @@ export function CommunityFeed() {
                   className="rounded-full transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
                   aria-label={`Ver perfil de ${author.name}`}
                 >
-                  <CommunityAvatar initials={author.initials} accent={author.accent} size="sm" />
+                  <CommunityAvatar
+                    initials={author.initials}
+                    src={author.avatarUrl}
+                    accent={author.accent}
+                    size="sm"
+                  />
                 </button>
                 <button
                   type="button"

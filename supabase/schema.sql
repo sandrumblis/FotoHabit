@@ -28,7 +28,22 @@ create table if not exists public.posts (
   created_at timestamptz not null default now()
 );
 
--- Storage bucket público "posts" (Dashboard → Storage si no existe)
+-- Una sola validación exitosa por usuario y día local (YYYY-MM-DD).
+create table if not exists public.daily_validations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  category text,
+  validation_date date not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, validation_date)
+);
+
+create index if not exists daily_validations_user_date_idx
+  on public.daily_validations (user_id, validation_date desc);
+
+-- Storage buckets públicos (Dashboard → Storage si no existen)
 -- insert into storage.buckets (id, name, public) values ('posts', 'posts', true);
+-- insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true);
+-- Políticas sugeridas: lectura pública; escritura autenticada en carpeta {auth.uid()}/**
 
 -- Si tus FKs tienen otros nombres, posts.ts prueba también el hint :user_id / :habit_id.

@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server'
+import {
+  DAILY_VALIDATION_BLOCKED_MESSAGE,
+  isValidDateKey,
+  localTodayKey,
+} from '@/lib/daily-validation'
+import { createClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -185,6 +191,42 @@ Sé flexible: valida intentos honestos. Solo rechaza si no hay ninguna relación
   return normalizeResult(parsed)
 }
 
+async function userAlreadyValidatedToday(
+  date: string,
+): Promise<boolean> {
+  try {
+    const supabase = await createClient()
+    const { data: auth } = await supabase.auth.getUser()
+    const userId = auth.user?.id
+    if (!userId) return false
+
+    const { data, error } = await supabase
+      .from('daily_validations')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('validation_date', date)
+      .maybeSingle()
+
+    if (!error) return Boolean(data)
+
+    // Fallback: posts del día si la tabla no está migrada.
+    const start = `${date}T00:00:00.000Z`
+    const end = new Date(`${date}T00:00:00.000Z`)
+    end.setUTCDate(end.getUTCDate() + 1)
+    const { data: posts } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('user_id', userId)
+      .gte('created_at', start)
+      .lt('created_at', end.toISOString())
+      .limit(1)
+    return (posts?.length ?? 0) > 0
+  } catch (err) {
+    console.warn('[validate-photo] daily check failed', err)
+    return false
+  }
+}
+
 export async function POST(request: Request) {
   let title = 'Reto del día'
   let maintenance = false
@@ -198,8 +240,22 @@ export async function POST(request: Request) {
     const mode = String(form.get('mode') ?? '').trim()
     const dayRaw = String(form.get('day') ?? '').trim()
     const day = dayRaw ? Number(dayRaw) : undefined
+    const clientDateRaw = String(form.get('clientDate') ?? '').trim()
+    const clientDate = isValidDateKey(clientDateRaw) ? clientDateRaw : localTodayKey()
     maintenance =
       mode === 'maintenance' || (typeof day === 'number' && !Number.isNaN(day) && day >= 22)
+
+    // Servidor: una sola validación exitosa por día.
+    if (await userAlreadyValidatedToday(clientDate)) {
+      return jsonOk(
+        {
+          valid: false,
+          message: DAILY_VALIDATION_BLOCKED_MESSAGE,
+          blockedDaily: true,
+        },
+        409,
+      )
+    }
 
     if (!(image instanceof File) || image.size === 0) {
       return jsonOk(

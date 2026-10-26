@@ -12,6 +12,7 @@ import { HomeSocial } from './home-social'
 import { KoreProProvider, useKorePro } from './kore-pro-context'
 import { NewUserOnboarding } from './new-user-onboarding'
 import { ProfileSettingsProvider } from './profile-settings-context'
+import { ProfileSettingsModal } from './profile-settings-modal'
 import { ProUnlockModal } from './pro-unlock-modal'
 import { SocialFeedProvider } from './social-feed-context'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ function MainContent() {
         {view === 'analytics' ? <AnalyticsDashboard /> : null}
       </main>
 
+      <ProfileSettingsModal />
       <ProUnlockModal
         open={proModal !== null}
         title={proModal?.title ?? ''}

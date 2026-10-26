@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { ShareAchievement } from './share-achievement'
 import { useHabitProgress } from './habit-progress-context'
+import { localTodayKey } from '@/lib/daily-validation'
 import { getLevelForDay } from '@/lib/habit-levels'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +33,8 @@ export type CaptureChallengeContext = {
 export type CaptureResult = {
   fileName: string
   previewUrl: string
+  /** Archivo original para subir a Supabase (evita blob: URL revocada → Failed to fetch). */
+  imageFile?: File | null
   caption: string
   privacy: CapturePrivacy
   valid: boolean
@@ -72,6 +75,8 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [pendingResult, setPendingResult] = useState<CaptureResult | null>(null)
+  /** previewUrl entregado al padre: no revocar en cleanup. */
+  const transferredPreviewRef = useRef<string | null>(null)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -148,14 +153,26 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      if (
+        previewUrl &&
+        previewUrl.startsWith('blob:') &&
+        previewUrl !== transferredPreviewRef.current
+      ) {
+        URL.revokeObjectURL(previewUrl)
+      }
     }
   }, [previewUrl])
 
   if (!open) return null
 
   function resetMedia() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    if (
+      previewUrl &&
+      previewUrl.startsWith('blob:') &&
+      previewUrl !== transferredPreviewRef.current
+    ) {
+      URL.revokeObjectURL(previewUrl)
+    }
     setPreviewUrl(null)
     setFileName(null)
     fileRef.current = null
@@ -240,6 +257,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       if (challenge?.categoryId) form.append('categoryId', challenge.categoryId)
       if (challenge?.objective) form.append('objective', challenge.objective)
       if (challenge?.maintenance) form.append('mode', 'maintenance')
+      form.append('clientDate', localTodayKey())
 
       const res = await fetch('/api/validate-photo', {
         method: 'POST',
@@ -247,7 +265,12 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       })
 
       const raw = await res.text()
-      let data: { valid?: boolean; message?: string; softPass?: boolean } = {}
+      let data: {
+        valid?: boolean
+        message?: string
+        softPass?: boolean
+        blockedDaily?: boolean
+      } = {}
       try {
         data = raw ? (JSON.parse(raw) as typeof data) : {}
       } catch {
@@ -261,6 +284,15 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       }
 
       const PHOTO_MISMATCH = 'La foto no coincide con el reto de hoy, prueba de nuevo'
+
+      if (data.blockedDaily || res.status === 409) {
+        setPendingResult(null)
+        setSuccessMessage(null)
+        setErrorMessage(data.message?.trim() || dailyValidationMessage)
+        setStep('error')
+        return
+      }
+
       const valid = data.valid !== false
       const message =
         data.message?.trim() ||
@@ -269,7 +301,11 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       if (!valid) {
         setPendingResult(null)
         setSuccessMessage(null)
-        setErrorMessage(PHOTO_MISMATCH)
+        setErrorMessage(
+          data.message?.trim() === dailyValidationMessage
+            ? dailyValidationMessage
+            : PHOTO_MISMATCH,
+        )
         setStep('error')
         return
       }
@@ -277,6 +313,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       const result: CaptureResult = {
         fileName,
         previewUrl,
+        imageFile: file,
         caption: caption.trim(),
         privacy,
         valid: true,
@@ -292,6 +329,7 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       const result: CaptureResult = {
         fileName,
         previewUrl,
+        imageFile: file,
         caption: caption.trim(),
         privacy,
         valid: true,
@@ -321,12 +359,15 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       setStep('error')
       return
     }
+    const imageFile = fileRef.current ?? pendingResult.imageFile ?? null
     const final: CaptureResult = {
       ...pendingResult,
+      imageFile,
       caption: caption.trim(),
       privacy: nextPrivacy,
     }
-    // Parent owns previewUrl after confirm
+    // El padre posee previewUrl + File: no revocar el blob al limpiar estado.
+    transferredPreviewRef.current = final.previewUrl
     setPreviewUrl(null)
     fileRef.current = null
     setPendingResult(null)

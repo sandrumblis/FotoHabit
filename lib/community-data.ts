@@ -40,6 +40,8 @@ export type CommunityUser = {
   id: string
   name: string
   initials: string
+  /** URL pública del avatar (Supabase Storage). */
+  avatarUrl?: string | null
   bio: string
   streak: number
   primaryHabit: string

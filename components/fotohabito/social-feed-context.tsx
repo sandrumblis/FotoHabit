@@ -24,6 +24,8 @@ type PublishInput = {
   level: number
   streakDays: number
   previewUrl?: string | null
+  /** Preferido: File/Blob evita "Failed to fetch" por blob: URL revocada. */
+  imageFile?: File | Blob | null
   categoryId?: string
 }
 
@@ -96,28 +98,38 @@ export function SocialFeedProvider({ children }: { children: ReactNode }) {
   const publishPost = useCallback(
     async (input: PublishInput): Promise<PublishResult> => {
       if (!user) throw new Error('Debes iniciar sesión para publicar')
-      if (!input.previewUrl) throw new Error('Falta la foto validada')
+      const image = input.imageFile ?? input.previewUrl
+      if (!image) throw new Error('Falta la foto validada')
 
-      const wasFirst = !hasPublishedLive
-      const post = await publishValidatedPhoto({
-        userId: user.id,
-        displayName: user.name,
-        habitTitle: input.habit,
-        categoryKey: input.categoryId,
-        accent: input.accent,
-        caption: input.caption,
-        streakDays: input.streakDays,
-        level: input.level,
-        image: input.previewUrl,
-      })
+      try {
+        const wasFirst = !hasPublishedLive
+        const post = await publishValidatedPhoto({
+          userId: user.id,
+          displayName: user.name,
+          habitTitle: input.habit,
+          categoryKey: input.categoryId,
+          accent: input.accent,
+          caption: input.caption,
+          streakDays: input.streakDays,
+          level: input.level,
+          image,
+        })
 
-      setPosts((prev) => {
-        const without = prev.filter((p) => p.id !== post.id)
-        return [post, ...without]
-      })
-      setHasPublishedLive(true)
+        setPosts((prev) => {
+          const without = prev.filter((p) => p.id !== post.id)
+          return [post, ...without]
+        })
+        setHasPublishedLive(true)
+        setError(null)
 
-      return { post, welcomeApplied: wasFirst }
+        return { post, welcomeApplied: wasFirst }
+      } catch (err) {
+        console.error('[FotoHabit] publishPost failed', err)
+        const message =
+          err instanceof Error ? err.message : 'No se pudo publicar en el feed'
+        setError(message)
+        throw err instanceof Error ? err : new Error(message)
+      }
     },
     [user, hasPublishedLive],
   )

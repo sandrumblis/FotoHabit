@@ -1,6 +1,6 @@
 'use client'
 
-import { Flame, Images, UserPlus, Users } from 'lucide-react'
+import { Flame, Images, Settings2, UserPlus, Users } from 'lucide-react'
 import { CommunityAvatar } from './community-avatar'
 import { EditableProfileBio } from './editable-profile-bio'
 import { ACCENT_STYLES, type CommunityUser } from '@/lib/community-data'
@@ -34,6 +34,8 @@ type CommunityProfileBannerProps = {
   user: CommunityUser
   onMetricClick: (metric: ProfileMetricKey) => void
   onOpenProfile: () => void
+  /** Abre el panel de ajustes (editar nombre / avatar). */
+  onEditProfile?: () => void
   overrides?: ProfileMetricOverrides
 }
 
@@ -79,6 +81,7 @@ export function CommunityProfileBanner({
   user,
   onMetricClick,
   onOpenProfile,
+  onEditProfile,
   overrides,
 }: CommunityProfileBannerProps) {
   const displayUser: CommunityUser = { ...user, ...overrides }
@@ -121,6 +124,7 @@ export function CommunityProfileBanner({
           >
             <CommunityAvatar
               initials={displayUser.initials}
+              src={displayUser.avatarUrl}
               accent={displayUser.accent}
               size="xl"
               progress={block.ratio}
@@ -135,9 +139,21 @@ export function CommunityProfileBanner({
           </button>
 
           <div className="min-w-0 flex-1 pt-0.5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-neon-cyan">
-              Tu perfil
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-neon-cyan">
+                Tu perfil
+              </p>
+              {displayUser.isSelf && onEditProfile ? (
+                <button
+                  type="button"
+                  onClick={onEditProfile}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
+                >
+                  <Settings2 className="size-3" aria-hidden="true" />
+                  Editar
+                </button>
+              ) : null}
+            </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h2
                 id="profile-banner-title"
@@ -145,7 +161,7 @@ export function CommunityProfileBanner({
               >
                 <button
                   type="button"
-                  onClick={onOpenProfile}
+                  onClick={onEditProfile ?? onOpenProfile}
                   className="transition-colors hover:text-neon-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
                 >
                   {displayUser.name}

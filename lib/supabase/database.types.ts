@@ -3,6 +3,7 @@
  * profiles: id, username, avatar_url, level, created_at
  * habits: id, user_id, title, category, streak_days, created_at
  * posts: id, user_id, habit_id, image_url, caption, created_at
+ * daily_validations: id, user_id, category, validation_date, created_at
  * bucket público: posts
  */
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
@@ -82,6 +83,29 @@ export type Database = {
           habit_id?: string | null
           image_url?: string
           caption?: string | null
+          created_at?: string
+        }
+      }
+      daily_validations: {
+        Row: {
+          id: string
+          user_id: string
+          category: string | null
+          validation_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          category?: string | null
+          validation_date: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          category?: string | null
+          validation_date?: string
           created_at?: string
         }
       }

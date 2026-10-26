@@ -5,6 +5,8 @@ import { NeonProgressRing } from './neon-progress-ring'
 
 type CommunityAvatarProps = {
   initials: string
+  /** URL de foto de perfil (Supabase). */
+  src?: string | null
   accent?: HabitAccent
   size?: 'sm' | 'md' | 'lg' | 'xl'
   className?: string
@@ -45,6 +47,7 @@ const ACCENT_CSS: Record<HabitAccent, string> = {
 
 export function CommunityAvatar({
   initials,
+  src,
   accent = 'cyan',
   size = 'md',
   className,
@@ -55,15 +58,26 @@ export function CommunityAvatar({
   const color = ringColor ?? ACCENT_CSS[accent]
   const px = SIZE_PX[size]
   const showRing = typeof progress === 'number'
+  const photo = typeof src === 'string' && src.trim().length > 0 ? src.trim() : null
 
   const face = (
     <div
       className={cn(
-        'flex size-full items-center justify-center overflow-hidden rounded-full bg-card font-semibold tracking-tight text-foreground',
+        'relative flex size-full items-center justify-center overflow-hidden rounded-full bg-card font-semibold tracking-tight text-foreground',
         TEXT[size],
       )}
     >
-      {initials}
+      {photo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photo}
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+          decoding="async"
+        />
+      ) : (
+        initials
+      )}
     </div>
   )
 

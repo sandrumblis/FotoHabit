@@ -50,6 +50,7 @@ export function profileToCommunityUser(
     id: profile.id,
     name,
     initials: initialsFromName(name),
+    avatarUrl: profile.avatar_url ?? extras?.avatarUrl ?? null,
     bio: extras?.bio ?? '',
     streak: extras?.streak ?? 0,
     primaryHabit: extras?.primaryHabit ?? 'Hábitos',
@@ -77,14 +78,28 @@ export function formatRelativeTime(iso: string) {
 export function mapPostRow(row: PostWithRelations): CommunityPost | null {
   const profile = unwrapOne(row.profiles)
   const habit = unwrapOne(row.habits) as HabitRow | null
-  if (!profile) return null
-
+  // Sin perfil (RLS / timing): no descartar el post; autor mínimo.
   const accent = accentFromCategory(habit?.category)
-  const author = profileToCommunityUser(profile, {
-    streak: habit?.streak_days ?? 0,
-    primaryHabit: habit?.title ?? 'Hábito',
-    accent,
-  })
+  const author = profile
+    ? profileToCommunityUser(profile, {
+        streak: habit?.streak_days ?? 0,
+        primaryHabit: habit?.title ?? 'Hábito',
+        accent,
+      })
+    : profileToCommunityUser(
+        {
+          id: row.user_id,
+          username: 'Usuario FotoHabit',
+          avatar_url: null,
+          level: 1,
+          created_at: row.created_at,
+        },
+        {
+          streak: habit?.streak_days ?? 0,
+          primaryHabit: habit?.title ?? 'Hábito',
+          accent,
+        },
+      )
 
   return {
     id: row.id,
@@ -95,7 +110,7 @@ export function mapPostRow(row: PostWithRelations): CommunityPost | null {
     time: formatRelativeTime(row.created_at),
     likes: 0,
     visibility: 'public',
-    level: profile.level ?? undefined,
+    level: profile?.level ?? undefined,
     streakDays: habit?.streak_days ?? undefined,
     imageUrl: row.image_url,
     previewUrl: null,

@@ -99,7 +99,12 @@ export function CommunityProfileModal({
       <div className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-6 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6">
           <div className="flex items-start gap-4">
-            <CommunityAvatar initials={user.initials} accent={user.accent} size="xl" />
+            <CommunityAvatar
+              initials={user.initials}
+              src={user.avatarUrl}
+              accent={user.accent}
+              size="xl"
+            />
             <div className="min-w-0 flex-1 pt-1">
               <span className="inline-flex items-center gap-1 font-mono text-[11px] text-neon-yellow">
                 <Flame className="size-3 fill-neon-yellow" aria-hidden="true" />

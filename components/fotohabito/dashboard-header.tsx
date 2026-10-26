@@ -13,9 +13,11 @@ import {
 import { useAuth } from './auth-context'
 import { useAppNav, type AppMainView } from './app-nav-context'
 import { BrandLogo } from './brand-logo'
+import { CommunityAvatar } from './community-avatar'
 import { useExploreObjectives } from './explore-objectives-context'
 import { useHabitProgress } from './habit-progress-context'
 import { useKorePro } from './kore-pro-context'
+import { useProfileSettings } from './profile-settings-context'
 import { getLevelFromCompleted } from '@/lib/habit-levels'
 import { cn } from '@/lib/utils'
 
@@ -63,27 +65,28 @@ const NAV_ITEMS: Array<{
 ]
 
 function HeaderUserChip() {
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
   const { getCompleted } = useHabitProgress()
+  const { displayName, avatarUrl, initials, openSettings } = useProfileSettings()
   const streak = getCompleted('actividad-fisica')
   const level = getLevelFromCompleted(streak)
-  const displayName = user?.name ?? 'Laura M.'
-  const initials = displayName
-    .split(/\s+/)
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
 
   return (
     <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-white/10 bg-card/80 py-0.5 pl-0.5 pr-0.5 backdrop-blur-md sm:gap-1 sm:py-1 sm:pl-1 sm:pr-1">
-      <div className="flex items-center gap-2 pr-0.5">
+      <button
+        type="button"
+        onClick={openSettings}
+        className="flex items-center gap-2 rounded-full pr-0.5 text-left transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+        aria-label="Abrir ajustes de perfil"
+        title="Ajustes de perfil"
+      >
         <div className="relative">
-          <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-neon-cyan via-neon-purple to-neon-yellow p-[2px] sm:size-9">
-            <div className="flex size-full items-center justify-center rounded-full bg-card text-[10px] font-semibold text-foreground sm:text-[11px]">
-              {initials || 'FH'}
-            </div>
-          </div>
+          <CommunityAvatar
+            initials={initials || 'FH'}
+            src={avatarUrl}
+            size="sm"
+            accent="cyan"
+          />
           <span className="absolute -bottom-0.5 -right-0.5 rounded-full border border-background bg-neon-purple px-1.5 font-mono text-[8px] font-bold leading-4 text-white">
             {level}
           </span>
@@ -97,7 +100,7 @@ function HeaderUserChip() {
             Nv.{level} · {streak}d
           </span>
         </div>
-      </div>
+      </button>
       <button
         type="button"
         onClick={logout}

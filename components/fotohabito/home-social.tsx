@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Flame, MessageCircle, Sparkles } from 'lucide-react'
 import { CommunityAvatar } from './community-avatar'
 import { CommunityFireButton } from './community-fire-button'
@@ -15,6 +15,7 @@ import { useAuth } from './auth-context'
 import { useExploreObjectives } from './explore-objectives-context'
 import { ExploreObjectivesModal } from './explore-objectives-modal'
 import { useKorePro } from './kore-pro-context'
+import { useProfileSettings } from './profile-settings-context'
 import { HabitChallengeModal } from './habit-challenge-modal'
 import {
   HabitCelebrationModal,
@@ -72,22 +73,23 @@ const COMMUNITY_TABS: Array<{ id: CommunityTab; label: string }> = [
 
 export function HomeSocial() {
   const { user: authUser } = useAuth()
+  const {
+    displayName,
+    avatarUrl,
+    initials,
+    openSettings,
+    profileRevision,
+  } = useProfileSettings()
   const mockMe = getCurrentUser()
   const me = useMemo((): CommunityUser => {
     if (!authUser) return mockMe
-    const name = authUser.name || mockMe.name
-    const initials = name
-      .split(/\s+/)
-      .map((p) => p[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase()
     // Perfil real limpio: sin rachas/seguidores inventados del mock de comunidad.
     return {
       ...mockMe,
       id: authUser.id,
-      name,
+      name: displayName || authUser.name || mockMe.name,
       initials: initials || 'FH',
+      avatarUrl: avatarUrl,
       bio: '',
       streak: 0,
       primaryHabit: 'Elige tu primer hábito',
@@ -99,7 +101,7 @@ export function HomeSocial() {
       followingIds: [],
       isSelf: true,
     }
-  }, [authUser, mockMe])
+  }, [authUser, mockMe, displayName, avatarUrl, initials, profileRevision])
 
   const {
     getCompleted,
@@ -108,9 +110,23 @@ export function HomeSocial() {
     dailyValidationMessage,
     hasCompletedDailyHabit,
     activeCategoryIds,
+    deactivateCategory,
   } = useHabitProgress()
-  const { posts, publishPost, getPostsByUserId, loading, error, hasPublishedLive } =
-    useSocialFeed()
+  const {
+    posts,
+    publishPost,
+    getPostsByUserId,
+    loading,
+    error,
+    hasPublishedLive,
+    refreshFeed,
+  } = useSocialFeed()
+
+  // Tras editar nombre/avatar, refrescar autores del feed.
+  useEffect(() => {
+    if (profileRevision <= 0) return
+    void refreshFeed()
+  }, [profileRevision, refreshFeed])
 
   const primaryId = activeCategoryIds[0] ?? PRIMARY_HABIT
   const primaryCompleted = getCompleted(primaryId)
@@ -248,6 +264,7 @@ export function HomeSocial() {
           level,
           streakDays: next,
           previewUrl: result.previewUrl,
+          imageFile: result.imageFile ?? null,
           categoryId,
         })
         welcomeApplied = published.welcomeApplied
@@ -376,6 +393,7 @@ export function HomeSocial() {
           overrides={profileOverrides}
           onMetricClick={handleMetricClick}
           onOpenProfile={() => openProfile({ ...me, ...profileOverrides })}
+          onEditProfile={openSettings}
         />
       ) : null}
 
@@ -430,10 +448,20 @@ export function HomeSocial() {
       {!loading && feedPosts.length > 0 ? (
         <ul className="flex flex-col gap-5">
           {feedPosts.map((post) => {
-            const author =
+            const rawAuthor =
               post.author ??
               (post.userId === me.id ? me : getUser(post.userId))
-            if (!author) return null
+            if (!rawAuthor) return null
+            const author =
+              rawAuthor.id === me.id
+                ? {
+                    ...rawAuthor,
+                    ...me,
+                    name: me.name,
+                    initials: me.initials,
+                    avatarUrl: me.avatarUrl,
+                  }
+                : rawAuthor
             const styles = ACCENT_STYLES[post.accent]
             const fired =
               firedIds.has(post.id) || Boolean(post.neonFire && post.userId === me.id)
@@ -468,6 +496,7 @@ export function HomeSocial() {
                   >
                     <CommunityAvatar
                       initials={author.initials}
+                      src={author.avatarUrl}
                       accent={author.accent}
                       size="sm"
                     />
@@ -622,12 +651,25 @@ export function HomeSocial() {
         open={roadmapCategory !== null}
         categoryId={roadmapCategory}
         completed={roadmapCategory ? getCompleted(roadmapCategory) : 0}
+        dailyLocked={hasCompletedDailyHabit}
+        dailyLockedMessage={dailyValidationMessage}
         onClose={() => setRoadmapCategory(null)}
         onCapture={() => {
           if (!roadmapCategory) return
+          if (hasCompletedDailyHabit) {
+            setToast(dailyValidationMessage)
+            window.setTimeout(() => setToast(null), 5600)
+            return
+          }
           const id = roadmapCategory
           setRoadmapCategory(null)
           openCaptureForCategory(id)
+        }}
+        onDeactivate={(id) => {
+          deactivateCategory(id)
+          setRoadmapCategory(null)
+          setToast('Objetivo quitado de tu lista. Puedes volver a añadirlo cuando quieras.')
+          window.setTimeout(() => setToast(null), 4200)
         }}
       />
 

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useId, useRef, type CSSProperties, type RefObject } from 'react'
-import { Camera, Check, Lock, Sparkles, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { Camera, Check, Lock, Sparkles, Trash2, X } from 'lucide-react'
 import {
   getCategoryMeta,
   getCurrentDay,
@@ -26,6 +26,11 @@ type HabitChallengeModalProps = {
   completed: number
   onClose: () => void
   onCapture?: () => void
+  /** Quita el hábito de objetivos activos. */
+  onDeactivate?: (categoryId: HabitCategoryId) => void
+  /** Ya hay una validación exitosa hoy (cualquier objetivo). */
+  dailyLocked?: boolean
+  dailyLockedMessage?: string
 }
 
 export function HabitChallengeModal({
@@ -34,9 +39,13 @@ export function HabitChallengeModal({
   completed,
   onClose,
   onCapture,
+  onDeactivate,
+  dailyLocked = false,
+  dailyLockedMessage,
 }: HabitChallengeModalProps) {
   const titleId = useId()
   const currentRef = useRef<HTMLLIElement>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -59,6 +68,10 @@ export function HabitChallengeModal({
     }, 80)
     return () => window.clearTimeout(id)
   }, [open, categoryId, completed])
+
+  useEffect(() => {
+    if (!open) setConfirmRemove(false)
+  }, [open, categoryId])
 
   if (!open || !categoryId) return null
 
@@ -119,15 +132,53 @@ export function HabitChallengeModal({
                   : meta.description}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/10 text-muted-foreground transition-colors hover:text-foreground"
-              aria-label="Cerrar roadmap"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {onDeactivate ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirmRemove) {
+                      setConfirmRemove(true)
+                      return
+                    }
+                    onDeactivate(categoryId)
+                    onClose()
+                  }}
+                  className={cn(
+                    'flex size-9 items-center justify-center rounded-full border transition-colors',
+                    confirmRemove
+                      ? 'border-red-400/50 bg-red-500/15 text-red-300'
+                      : 'border-white/10 text-muted-foreground hover:border-red-400/40 hover:text-red-300',
+                  )}
+                  aria-label={
+                    confirmRemove
+                      ? 'Confirmar quitar objetivo'
+                      : 'Quitar de mis objetivos'
+                  }
+                  title={
+                    confirmRemove
+                      ? 'Pulsa otra vez para confirmar'
+                      : 'Quitar de mis objetivos'
+                  }
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex size-9 items-center justify-center rounded-full border border-white/10 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Cerrar roadmap"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
           </div>
+          {confirmRemove ? (
+            <p className="mt-3 text-xs text-red-300/90" role="status">
+              Pulsa otra vez la papelera para quitar este objetivo de tu lista.
+            </p>
+          ) : null}
         </div>
 
         {/* Scrollable roadmap */}
@@ -155,8 +206,9 @@ export function HabitChallengeModal({
                         challenge={challenge}
                         status={status}
                         refProp={status === 'current' ? currentRef : undefined}
+                        dailyLocked={dailyLocked}
                         onCapture={
-                          status === 'current'
+                          status === 'current' && !dailyLocked
                             ? () => {
                                 onClose()
                                 onCapture?.()
@@ -174,6 +226,15 @@ export function HabitChallengeModal({
 
         {/* Progress footer — bloque de nivel actual */}
         <div className="relative shrink-0 border-t border-white/5 bg-card/95 px-5 py-4 backdrop-blur-md">
+          {dailyLocked ? (
+            <p
+              className="mb-3 rounded-2xl border border-neon-yellow/35 bg-neon-yellow/10 px-3 py-2.5 text-center text-xs leading-relaxed text-neon-yellow"
+              role="status"
+            >
+              {dailyLockedMessage ??
+                'Ya has completado tu hábito de hoy. ¡Vuelve mañana para mantener tu racha!'}
+            </p>
+          ) : null}
           <div className="mb-2 flex items-center justify-between gap-3">
             <span className="font-mono text-[11px] text-muted-foreground">
               Nivel {level} · {levelMeta.short}
@@ -234,11 +295,13 @@ function RoadmapDayCard({
   status,
   refProp,
   onCapture,
+  dailyLocked,
 }: {
   challenge: DailyChallenge
   status: DayStatus
   refProp?: RefObject<HTMLLIElement | null>
   onCapture?: () => void
+  dailyLocked?: boolean
 }) {
   return (
     <li
@@ -306,7 +369,7 @@ function RoadmapDayCard({
             {challenge.description}
           </p>
 
-          {status === 'current' && onCapture ? (
+          {status === 'current' && onCapture && !dailyLocked ? (
             <button
               type="button"
               onClick={onCapture}
@@ -315,6 +378,11 @@ function RoadmapDayCard({
               <Camera className="size-4" aria-hidden="true" />
               Validar con foto
             </button>
+          ) : null}
+          {status === 'current' && dailyLocked ? (
+            <p className="mt-3 text-center text-[11px] leading-relaxed text-neon-yellow/90">
+              Validación de hoy completada · vuelve mañana
+            </p>
           ) : null}
         </div>
       </div>
