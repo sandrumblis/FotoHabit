@@ -10,6 +10,7 @@ import { ExploreObjectivesProvider } from './explore-objectives-context'
 import { HabitProgressProvider } from './habit-progress-context'
 import { HomeSocial } from './home-social'
 import { KoreProProvider, useKorePro } from './kore-pro-context'
+import { NewUserOnboarding } from './new-user-onboarding'
 import { ProfileSettingsProvider } from './profile-settings-context'
 import { ProUnlockModal } from './pro-unlock-modal'
 import { SocialFeedProvider } from './social-feed-context'
@@ -21,6 +22,7 @@ function MainContent() {
 
   return (
     <div className="min-h-dvh bg-background">
+      <NewUserOnboarding />
       <DashboardHeader />
       <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-6 sm:max-w-3xl sm:px-6 sm:py-10">
         <div className={cn(view === 'analytics' && 'hidden')}>

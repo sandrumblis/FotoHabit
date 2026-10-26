@@ -11,30 +11,51 @@ import {
 } from 'react'
 import type { HabitCategoryId } from '@/lib/habit-challenges'
 import { FREE_ACTIVE_OBJECTIVES_LIMIT } from '@/lib/kore-pro'
+import { useAuth } from './auth-context'
 
 type ProgressMap = Record<HabitCategoryId, number>
 type TodayMap = Partial<Record<HabitCategoryId, boolean>>
 
-const STORAGE_KEY = 'fotohabit.dailyValidation.v1'
+const DAILY_STORAGE_KEY = 'fotohabit.dailyValidation.v1'
+const PROGRESS_STORAGE_KEY = 'fotohabit.progress.v1'
+const ONBOARDING_STORAGE_PREFIX = 'fotohabit.onboarding.v1:'
 
-const INITIAL_PROGRESS: ProgressMap = {
-  'actividad-fisica': 12,
-  'orden-limpieza': 8,
-  'comida-saludable': 6,
-  'enfoque-mente': 5,
+const ALL_CATEGORY_IDS: HabitCategoryId[] = [
+  'actividad-fisica',
+  'orden-limpieza',
+  'comida-saludable',
+  'enfoque-mente',
+  'sueno-descanso',
+  'ahorro-finanzas',
+  'sin-humos',
+]
+
+/** Nuevo usuario: sin rachas inventadas. */
+const EMPTY_PROGRESS: ProgressMap = {
+  'actividad-fisica': 0,
+  'orden-limpieza': 0,
+  'comida-saludable': 0,
+  'enfoque-mente': 0,
   'sueno-descanso': 0,
   'ahorro-finanzas': 0,
   'sin-humos': 0,
 }
 
-/** Free: máximo 2 objetivos activos de demostración. */
-const INITIAL_ACTIVE: HabitCategoryId[] = ['actividad-fisica', 'comida-saludable']
+/** Nuevo usuario: sin objetivos preseleccionados. */
+const EMPTY_ACTIVE: HabitCategoryId[] = []
 
 export const DAILY_VALIDATION_BLOCKED_MESSAGE =
   'Ya has completado tu hábito de hoy. Vuelve mañana para seguir sumando a tu racha 🔥'
 
+/** Solo categorías avanzadas requieren PRO. Enfoque, Orden, Actividad y Comida son gratis. */
+const PRO_CATEGORY_IDS: ReadonlySet<HabitCategoryId> = new Set([
+  'sueno-descanso',
+  'ahorro-finanzas',
+  'sin-humos',
+])
+
 function isProCategory(id: HabitCategoryId): boolean {
-  return id === 'sueno-descanso' || id === 'ahorro-finanzas' || id === 'sin-humos'
+  return PRO_CATEGORY_IDS.has(id)
 }
 
 function localTodayKey(d = new Date()) {
@@ -47,17 +68,84 @@ function localTodayKey(d = new Date()) {
 type StoredDailyValidation = {
   date: string
   categoryId: HabitCategoryId
+  userId?: string
 }
 
-function readStoredDaily(): StoredDailyValidation | null {
+type StoredProgressBlob = {
+  userId: string
+  progress: ProgressMap
+  activeCategoryIds: HabitCategoryId[]
+}
+
+function sanitizeProgress(raw: unknown): ProgressMap {
+  const base = { ...EMPTY_PROGRESS }
+  if (!raw || typeof raw !== 'object') return base
+  const obj = raw as Record<string, unknown>
+  for (const id of ALL_CATEGORY_IDS) {
+    const n = obj[id]
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) {
+      base[id] = Math.floor(n)
+    }
+  }
+  return base
+}
+
+function sanitizeActive(raw: unknown): HabitCategoryId[] {
+  if (!Array.isArray(raw)) return []
+  const allowed = new Set<string>(ALL_CATEGORY_IDS)
+  const out: HabitCategoryId[] = []
+  for (const item of raw) {
+    if (typeof item === 'string' && allowed.has(item) && !out.includes(item as HabitCategoryId)) {
+      out.push(item as HabitCategoryId)
+    }
+  }
+  return out
+}
+
+function readStoredProgress(userId: string): StoredProgressBlob | null {
+  if (typeof window === 'undefined' || !userId) return null
+  try {
+    const raw = window.localStorage.getItem(PROGRESS_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredProgressBlob
+    if (!parsed || parsed.userId !== userId) return null
+    return {
+      userId,
+      progress: sanitizeProgress(parsed.progress),
+      activeCategoryIds: sanitizeActive(parsed.activeCategoryIds),
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeStoredProgress(
+  userId: string,
+  progress: ProgressMap,
+  activeCategoryIds: HabitCategoryId[],
+) {
+  if (typeof window === 'undefined' || !userId) return
+  try {
+    const payload: StoredProgressBlob = { userId, progress, activeCategoryIds }
+    window.localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    /* private mode */
+  }
+}
+
+function readStoredDaily(userId: string): StoredDailyValidation | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.localStorage.getItem(DAILY_STORAGE_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as StoredDailyValidation
     if (!parsed?.date || !parsed?.categoryId) return null
+    if (parsed.userId && parsed.userId !== userId) {
+      window.localStorage.removeItem(DAILY_STORAGE_KEY)
+      return null
+    }
     if (parsed.date !== localTodayKey()) {
-      window.localStorage.removeItem(STORAGE_KEY)
+      window.localStorage.removeItem(DAILY_STORAGE_KEY)
       return null
     }
     return parsed
@@ -66,14 +154,33 @@ function readStoredDaily(): StoredDailyValidation | null {
   }
 }
 
-function writeStoredDaily(categoryId: HabitCategoryId) {
+function writeStoredDaily(userId: string, categoryId: HabitCategoryId) {
   if (typeof window === 'undefined') return
   try {
     const payload: StoredDailyValidation = {
       date: localTodayKey(),
       categoryId,
+      userId,
     }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    window.localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    /* private mode */
+  }
+}
+
+export function hasCompletedOnboarding(userId: string): boolean {
+  if (typeof window === 'undefined' || !userId) return true
+  try {
+    return window.localStorage.getItem(`${ONBOARDING_STORAGE_PREFIX}${userId}`) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markOnboardingComplete(userId: string) {
+  if (typeof window === 'undefined' || !userId) return
+  try {
+    window.localStorage.setItem(`${ONBOARDING_STORAGE_PREFIX}${userId}`, '1')
   } catch {
     /* private mode */
   }
@@ -97,6 +204,7 @@ type HabitProgressContextValue = {
   todayValidated: TodayMap
   activeCategoryIds: HabitCategoryId[]
   freeActiveLimit: number
+  hydrated: boolean
   /** true si ya hay una validación exitosa en el día local actual */
   hasCompletedDailyHabit: boolean
   dailyValidationMessage: string
@@ -113,19 +221,42 @@ type HabitProgressContextValue = {
 const HabitProgressContext = createContext<HabitProgressContextValue | null>(null)
 
 export function HabitProgressProvider({ children }: { children: ReactNode }) {
-  const [progress, setProgress] = useState<ProgressMap>(INITIAL_PROGRESS)
+  const { user } = useAuth()
+  const userId = user?.id ?? ''
+
+  const [progress, setProgress] = useState<ProgressMap>(EMPTY_PROGRESS)
   const [todayValidated, setTodayValidated] = useState<TodayMap>({})
   const [activeCategoryIds, setActiveCategoryIds] =
-    useState<HabitCategoryId[]>(INITIAL_ACTIVE)
+    useState<HabitCategoryId[]>(EMPTY_ACTIVE)
   const [hydrated, setHydrated] = useState(false)
 
+  // Cargar progreso del usuario (o vacío si es nuevo / sin datos).
   useEffect(() => {
-    const stored = readStoredDaily()
-    if (stored) {
-      setTodayValidated({ [stored.categoryId]: true })
+    if (!userId) {
+      setProgress(EMPTY_PROGRESS)
+      setActiveCategoryIds(EMPTY_ACTIVE)
+      setTodayValidated({})
+      setHydrated(false)
+      return
     }
+
+    const stored = readStoredProgress(userId)
+    setProgress(stored?.progress ?? { ...EMPTY_PROGRESS })
+    setActiveCategoryIds(stored?.activeCategoryIds ?? [...EMPTY_ACTIVE])
+
+    const daily = readStoredDaily(userId)
+    setTodayValidated(daily ? { [daily.categoryId]: true } : {})
     setHydrated(true)
-  }, [])
+  }, [userId])
+
+  // Persistir rachas y activos por usuario.
+  useEffect(() => {
+    if (!userId || !hydrated) return
+    writeStoredProgress(userId, progress, activeCategoryIds)
+    if (activeCategoryIds.length > 0) {
+      markOnboardingComplete(userId)
+    }
+  }, [userId, hydrated, progress, activeCategoryIds])
 
   const hasCompletedDailyHabit = useMemo(
     () => Object.values(todayValidated).some(Boolean),
@@ -171,8 +302,7 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
 
   const completeDay = useCallback(
     (id: HabitCategoryId, opts?: ActivateOptions): CompleteDayResult => {
-      // Una sola validación exitosa por día (cualquier objetivo).
-      if (Object.values(todayValidated).some(Boolean) || readStoredDaily()) {
+      if (Object.values(todayValidated).some(Boolean) || (userId && readStoredDaily(userId))) {
         return {
           ok: false,
           reason: 'already-today',
@@ -186,7 +316,7 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
         return { ...prev, [id]: next }
       })
       setTodayValidated({ [id]: true })
-      writeStoredDaily(id)
+      if (userId) writeStoredDaily(userId, id)
 
       setActiveCategoryIds((prev) => {
         if (prev.includes(id)) return prev
@@ -198,7 +328,7 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
 
       return { ok: true, next }
     },
-    [todayValidated],
+    [todayValidated, userId],
   )
 
   const value = useMemo(
@@ -207,6 +337,7 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
       todayValidated,
       activeCategoryIds,
       freeActiveLimit: FREE_ACTIVE_OBJECTIVES_LIMIT,
+      hydrated,
       hasCompletedDailyHabit,
       dailyValidationMessage: DAILY_VALIDATION_BLOCKED_MESSAGE,
       getCompleted,
@@ -221,6 +352,7 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
       progress,
       todayValidated,
       activeCategoryIds,
+      hydrated,
       hasCompletedDailyHabit,
       getCompleted,
       isTodayValidated,
@@ -229,7 +361,6 @@ export function HabitProgressProvider({ children }: { children: ReactNode }) {
       canActivateCategory,
       activateCategory,
       completeDay,
-      hydrated,
     ],
   )
 

@@ -82,11 +82,21 @@ export function HomeSocial() {
       .join('')
       .slice(0, 2)
       .toUpperCase()
+    // Perfil real limpio: sin rachas/seguidores inventados del mock de comunidad.
     return {
       ...mockMe,
       id: authUser.id,
       name,
-      initials: initials || mockMe.initials,
+      initials: initials || 'FH',
+      bio: '',
+      streak: 0,
+      primaryHabit: 'Elige tu primer hábito',
+      postsCount: 0,
+      followersCount: 0,
+      followingCount: 0,
+      likesCount: 0,
+      followerIds: [],
+      followingIds: [],
       isSelf: true,
     }
   }, [authUser, mockMe])
@@ -97,19 +107,31 @@ export function HomeSocial() {
     canValidateToday,
     dailyValidationMessage,
     hasCompletedDailyHabit,
+    activeCategoryIds,
   } = useHabitProgress()
   const { posts, publishPost, getPostsByUserId, loading, error, hasPublishedLive } =
     useSocialFeed()
 
-  const primaryCompleted = getCompleted(PRIMARY_HABIT)
+  const primaryId = activeCategoryIds[0] ?? PRIMARY_HABIT
+  const primaryCompleted = getCompleted(primaryId)
   const profileOverrides = useMemo(
     () => ({
       streak: primaryCompleted,
-      primaryHabit: getCategoryMeta(PRIMARY_HABIT).title,
+      primaryHabit:
+        activeCategoryIds.length > 0
+          ? getCategoryMeta(primaryId).title
+          : 'Elige tu primer hábito',
       postsCount: getPostsByUserId(me.id).length,
-      likesCount: me.likesCount + posts.filter((p) => p.userId === me.id && p.neonFire).length,
+      likesCount: posts.filter((p) => p.userId === me.id && p.neonFire).length,
     }),
-    [primaryCompleted, getPostsByUserId, me.id, me.likesCount, posts],
+    [
+      primaryCompleted,
+      primaryId,
+      activeCategoryIds.length,
+      getPostsByUserId,
+      me.id,
+      posts,
+    ],
   )
 
   const [communityTab, setCommunityTab] = useState<CommunityTab>('global')

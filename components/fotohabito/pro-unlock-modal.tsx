@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useKorePro } from './kore-pro-context'
 import {
+  FREE_ACTIVE_OBJECTIVES_LIMIT,
   KORE_FREE_FEATURES,
   KORE_PRO_FEATURES,
   KORE_PRO_PLANS,
@@ -78,7 +79,7 @@ export function ProUnlockModal({
   const sub =
     description ??
     (reason === 'limit'
-      ? 'En la versión gratuita puedes tener hasta 2 objetivos activos. Con PRO, gestiona ilimitados a la vez.'
+      ? `En la versión gratuita puedes tener hasta ${FREE_ACTIVE_OBJECTIVES_LIMIT} objetivos activos. Con PRO, gestiona ilimitados a la vez.`
       : 'Suscríbete a FotoHabit PRO y desbloquea objetivos ilimitados, retos con amigos, objetivos personalizados y estadísticas avanzadas.')
 
   function handleSubscribe() {

@@ -1,4 +1,4 @@
-export const FREE_ACTIVE_OBJECTIVES_LIMIT = 2
+export const FREE_ACTIVE_OBJECTIVES_LIMIT = 4
 
 export type KoreProPlanId = 'monthly' | 'yearly' | 'lifetime'
 

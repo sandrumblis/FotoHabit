@@ -65,23 +65,54 @@ export async function ensureProfile(input: {
   level?: number
 }) {
   const supabase = createClient()
-  // Solo columnas reales de profiles (NO accent / display_name / bio).
-  const row: { id: string; username: string; level?: number } = {
-    id: input.id,
-    username: input.displayName.trim().slice(0, 40) || 'Usuario FotoHabit',
-  }
-  if (typeof input.level === 'number' && Number.isFinite(input.level)) {
-    row.level = Math.max(1, Math.round(input.level))
+  const username = input.displayName.trim().slice(0, 40) || 'Usuario FotoHabit'
+
+  // Perfil existente: no inventar progreso ni resetear level/habits.
+  const { data: existing, error: readError } = await supabase
+    .from('profiles')
+    .select('id, username')
+    .eq('id', input.id)
+    .maybeSingle()
+
+  if (readError) throw new Error(readError.message)
+
+  if (existing?.id) {
+    // Solo actualizar username si viene vacío en DB.
+    if (!existing.username?.trim() && username) {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ username })
+        .eq('id', input.id)
+      if (updateError) throw new Error(updateError.message)
+    }
+    return
   }
 
-  const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' })
+  // Perfil nuevo: limpio (level 1, sin hábitos ni rachas — los habits se crean al publicar).
+  const insertRow: { id: string; username: string; level: number } = {
+    id: input.id,
+    username,
+    level: 1,
+  }
+
+  const { error } = await supabase.from('profiles').insert(insertRow)
   if (error) {
-    // Si `level` no estuviera en cache, reintentar solo con id+username.
-    if (error.message.toLowerCase().includes('level') || error.message.toLowerCase().includes('accent')) {
+    // Carrera con trigger de auth: ya existe → ok.
+    if (error.code === '23505' || error.message.toLowerCase().includes('duplicate')) {
+      return
+    }
+    // Si `level` no está en cache del schema, insertar solo id+username.
+    if (error.message.toLowerCase().includes('level')) {
       const { error: retryError } = await supabase
         .from('profiles')
-        .upsert({ id: row.id, username: row.username }, { onConflict: 'id' })
-      if (retryError) throw new Error(retryError.message)
+        .insert({ id: insertRow.id, username: insertRow.username })
+      if (
+        retryError &&
+        retryError.code !== '23505' &&
+        !retryError.message.toLowerCase().includes('duplicate')
+      ) {
+        throw new Error(retryError.message)
+      }
       return
     }
     throw new Error(error.message)

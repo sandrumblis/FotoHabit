@@ -245,20 +245,28 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
         method: 'POST',
         body: form,
       })
-      const data = (await res.json()) as { valid?: boolean; message?: string }
 
-      if (!res.ok && data.valid !== false) {
-        throw new Error(data.message || 'No se pudo validar la foto')
+      const raw = await res.text()
+      let data: { valid?: boolean; message?: string; softPass?: boolean } = {}
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {}
+      } catch {
+        // Respuesta no JSON (HTML/proxy): soft-pass elegante, sin "Unexpected token".
+        data = {
+          valid: true,
+          message:
+            'No pudimos revisar la foto ahora mismo. La damos por válida para que no pierdas el día.',
+          softPass: true,
+        }
       }
 
-      const valid = Boolean(data.valid)
       const PHOTO_MISMATCH = 'La foto no coincide con el reto de hoy, prueba de nuevo'
+      const valid = data.valid !== false
       const message =
         data.message?.trim() ||
         (valid ? '¡Reto validado! Sigue con tu racha.' : PHOTO_MISMATCH)
 
       if (!valid) {
-        // No registrar progreso: solo error y reintento.
         setPendingResult(null)
         setSuccessMessage(null)
         setErrorMessage(PHOTO_MISMATCH)
@@ -279,13 +287,22 @@ export function CaptureModal({ open, onClose, onConfirm, challenge }: CaptureMod
       setPendingResult(result)
       setSuccessMessage(result.message)
       setStep('success')
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : 'No pudimos validar la foto. Inténtalo de nuevo.',
-      )
-      setStep('error')
+    } catch {
+      // Red caída u otro fallo de cliente: aviso elegante + soft-pass.
+      const result: CaptureResult = {
+        fileName,
+        previewUrl,
+        caption: caption.trim(),
+        privacy,
+        valid: true,
+        message:
+          'No pudimos revisar la foto ahora mismo. La damos por válida para que no pierdas el día.',
+        day: challenge?.day,
+        categoryId: challenge?.categoryId,
+      }
+      setPendingResult(result)
+      setSuccessMessage(result.message)
+      setStep('success')
     }
   }
 

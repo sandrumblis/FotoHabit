@@ -372,9 +372,11 @@ export function ExploreObjectivesModal({
               Añade objetivos
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {isPro
-                ? 'PRO activo · objetivos ilimitados'
-                : `Gratis · hasta ${FREE_ACTIVE_OBJECTIVES_LIMIT} activos (${activeCategoryIds.length}/${freeActiveLimit})`}
+              {activeCategoryIds.length === 0
+                ? 'Elige tus hábitos iniciales para empezar tu racha desde cero.'
+                : isPro
+                  ? 'PRO activo · objetivos ilimitados'
+                  : `Gratis · hasta ${FREE_ACTIVE_OBJECTIVES_LIMIT} activos (${activeCategoryIds.length}/${freeActiveLimit})`}
             </p>
           </div>
         </div>

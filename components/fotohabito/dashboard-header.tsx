@@ -76,12 +76,12 @@ function HeaderUserChip() {
     .toUpperCase()
 
   return (
-    <div className="flex items-center gap-1 rounded-full border border-white/10 bg-card/80 py-1 pl-1 pr-1 backdrop-blur-md">
-      <div className="flex items-center gap-2.5 pr-0.5">
+    <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-white/10 bg-card/80 py-0.5 pl-0.5 pr-0.5 backdrop-blur-md sm:gap-1 sm:py-1 sm:pl-1 sm:pr-1">
+      <div className="flex items-center gap-2 pr-0.5">
         <div className="relative">
-          <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-neon-cyan via-neon-purple to-neon-yellow p-[2px]">
-            <div className="flex size-full items-center justify-center rounded-full bg-card text-[11px] font-semibold text-foreground">
-              {initials || 'KO'}
+          <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-neon-cyan via-neon-purple to-neon-yellow p-[2px] sm:size-9">
+            <div className="flex size-full items-center justify-center rounded-full bg-card text-[10px] font-semibold text-foreground sm:text-[11px]">
+              {initials || 'FH'}
             </div>
           </div>
           <span className="absolute -bottom-0.5 -right-0.5 rounded-full border border-background bg-neon-purple px-1.5 font-mono text-[8px] font-bold leading-4 text-white">
@@ -128,19 +128,19 @@ export function DashboardHeader() {
   }
 
   return (
-    <div className="sticky top-0 z-30">
-      <header className="border-b border-white/5 bg-background/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3 sm:max-w-6xl sm:gap-4 sm:px-6">
+    <div className="sticky top-0 z-30 w-full overflow-x-hidden">
+      <header className="w-full border-b border-white/5 bg-background/85 backdrop-blur-xl">
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-2 px-4 py-2.5 sm:max-w-6xl sm:gap-4 sm:px-6 sm:py-3">
           <button
             type="button"
             onClick={() => go('community')}
-            className="min-w-0 shrink-0 overflow-visible bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+            className="min-w-0 flex-1 overflow-hidden bg-transparent p-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
             aria-label="FotoHabit — inicio"
           >
-            <BrandLogo size="sm" />
+            <BrandLogo size="sm" className="max-w-full" />
           </button>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <button
               type="button"
               onClick={() =>
@@ -154,6 +154,7 @@ export function DashboardHeader() {
               }
               className={cn(
                 navPillClass,
+                'h-8 shrink-0 gap-1 px-2.5 sm:h-10 sm:px-4',
                 'border-neon-yellow/55 bg-neon-yellow/15 text-neon-yellow',
                 'shadow-[0_0_22px_-6px_var(--color-neon-yellow)]',
                 'hover:scale-[1.02] hover:bg-neon-yellow/25',
@@ -161,9 +162,9 @@ export function DashboardHeader() {
               )}
             >
               {isPro ? (
-                <Crown className="size-3.5" aria-hidden="true" />
+                <Crown className="size-3.5 shrink-0" aria-hidden="true" />
               ) : (
-                <Zap className="size-3.5 fill-neon-yellow" aria-hidden="true" />
+                <Zap className="size-3.5 shrink-0 fill-neon-yellow" aria-hidden="true" />
               )}
               <span className="hidden whitespace-nowrap uppercase tracking-wide sm:inline">
                 {isPro ? 'PRO' : 'Hazte PRO'}
@@ -185,10 +186,10 @@ export function DashboardHeader() {
         </div>
       </header>
 
-      <div className="border-b border-white/5 bg-background/70 backdrop-blur-xl">
+      <div className="w-full overflow-x-auto border-b border-white/5 bg-background/70 backdrop-blur-xl [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <nav
           aria-label="Principal"
-          className="mx-auto flex max-w-2xl items-center justify-center gap-2 px-4 py-3 sm:max-w-6xl sm:gap-3 sm:px-6"
+          className="mx-auto flex w-full max-w-2xl items-center justify-center gap-1.5 px-4 py-2.5 sm:max-w-6xl sm:gap-3 sm:px-6 sm:py-3"
         >
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
@@ -200,6 +201,7 @@ export function DashboardHeader() {
                 onClick={() => go(item.id)}
                 className={cn(
                   navPillClass,
+                  'h-8 shrink-0 px-2.5 text-[11px] sm:h-10 sm:px-4 sm:text-sm',
                   item.ring,
                   active ? item.active : item.idle,
                 )}

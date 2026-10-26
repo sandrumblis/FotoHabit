@@ -1,5 +1,6 @@
 -- Esquema REAL de FotoHabit en Supabase (alineado con la app).
 -- profiles / habits / posts · bucket público: posts
+-- Perfil nuevo = limpio (level 1). Los habits se crean al validar/publicar (streak_days 0).
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,

@@ -7,20 +7,20 @@ export const maxDuration = 60
 export const PHOTO_MISMATCH_MESSAGE =
   'La foto no coincide con el reto de hoy, prueba de nuevo'
 
-const SYSTEM_PROMPT_CHALLENGE = `Eres el juez ESTRICTO de FotoHabit (nunca digas Kore ni Kore Habits).
-Tu único trabajo: decidir si la imagen muestra claramente evidencia del RETO DE HOY descrito por el usuario.
+const API_UNAVAILABLE_MESSAGE =
+  'No pudimos revisar la foto ahora mismo. La damos por válida para que no pierdas el día — ¡sigue con tu racha!'
 
-Criterio de aceptación (estricto):
-- Debes ver en la foto elementos visuales que coincidan de forma reconocible con la descripción del reto (objetos, acción, comida, contexto).
-- Ejemplos de RECHAZO: si el reto pide una infusión/té y la foto es una pared, un selfie irrelevante, un paisaje o cualquier cosa no relacionada → RECHAZA.
-- Si el reto pide vegetales/ensalada y la foto no muestra comida vegetal reconocible → RECHAZA.
-- Si el reto pide ejercicio y no hay indicios de actividad/equipamiento/entorno de entrenamiento → RECHAZA.
-- Fotos negras, vacías, ilegibles, memes genéricos o capturas de pantalla ajenas al reto → RECHAZA.
-- En caso de duda razonable sobre si la foto muestra el reto → RECHAZA (no inventes coincidencias).
+const SYSTEM_PROMPT_CHALLENGE = `Eres el juez amable y flexible de FotoHabit (nunca digas Kore ni Kore Habits).
+Tu trabajo: decidir si la foto tiene relación razonable con el RETO DE HOY.
 
-Criterio de aceptación (solo si hay evidencia clara):
-- Si la foto muestra de forma evidente el reto pedido → VALIDA.
-- Ángulos imperfectos o calidad media están bien SI el contenido del reto es reconocible.
+Criterio de aceptación (flexible, prioriza validar):
+- VALIDA si la imagen muestra el reto, una intención clara o algo relacionado con el contexto del hábito (objetos, comida, entorno, actividad, selfie parcial, etc.).
+- Ángulos imperfectos, calidad media o encuadres incompletos están bien si hay relación lógica con el reto.
+- En caso de duda razonable → VALIDA (no castigues intentos honestos).
+
+Solo RECHAZA cuando:
+- La foto está totalmente negra, blanca/vacía, ilegible o sin contenido reconocible.
+- La foto no guarda NINGUNA relación obvia con el reto (ej. pared vacía cuando piden una infusión, meme genérico sin contexto).
 
 Mensajes:
 - Responde SIEMPRE en español.
@@ -28,16 +28,17 @@ Mensajes:
 - Si rechazas: usa EXACTAMENTE este mensaje (sin cambios):
   "${PHOTO_MISMATCH_MESSAGE}"
 
-Responde ÚNICAMENTE con JSON válido (sin markdown):
+Responde ÚNICAMENTE con JSON válido (sin markdown ni texto extra):
 {"valid": true|false, "message": "texto"}`
 
-const SYSTEM_PROMPT_MAINTENANCE = `Eres el juez ESTRICTO de FotoHabit en modo Hábito Creado / mantenimiento (nunca digas Kore ni Kore Habits).
-El usuario ya pasó el ciclo inicial. Aun así, la foto DEBE relacionarse de forma clara y reconocible con el OBJETIVO principal del hábito.
+const SYSTEM_PROMPT_MAINTENANCE = `Eres el juez amable y flexible de FotoHabit en modo Hábito Creado / mantenimiento (nunca digas Kore ni Kore Habits).
+El usuario ya pasó el ciclo inicial. Premia la CONSTANCIA.
 
-Criterio estricto:
-- Debe haber evidencia visual del objetivo (no basta "cualquier cosa").
-- Si la foto es una pared, techo, suelo vacío, selfie irrelevante u objeto sin relación con el objetivo → RECHAZA.
-- En caso de duda → RECHAZA.
+Criterio flexible:
+- VALIDA cualquier imagen con relación general al objetivo del hábito (no hace falta un reto concreto).
+- Selfies, entorno, objetos, comida, movimiento, orden, lectura, descanso… relacionados de forma mínima → VALIDA.
+- En caso de duda → VALIDA.
+- Solo RECHAZA fotos negras/vacías/ilegibles o sin ninguna relación con el objetivo.
 
 Si validas: mensaje breve celebrando la constancia (1-2 frases), sin mencionar Kore.
 Si rechazas: usa EXACTAMENTE:
@@ -51,14 +52,39 @@ type VisionResult = {
   message: string
 }
 
+function jsonOk(body: Record<string, unknown>, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+  })
+}
+
+function softPass(title: string, extra?: Record<string, unknown>) {
+  return jsonOk({
+    valid: true,
+    message:
+      title && title !== 'Reto del día'
+        ? `No pudimos revisar la foto ahora mismo. Damos por válido «${title}» para que no pierdas el día.`
+        : API_UNAVAILABLE_MESSAGE,
+    softPass: true,
+    ...extra,
+  })
+}
+
 function parseVisionJson(raw: string): VisionResult | null {
   const trimmed = raw.trim()
   const fenced = trimmed.match(/\{[\s\S]*\}/)
   const payload = fenced?.[0] ?? trimmed
   try {
     const parsed = JSON.parse(payload) as { valid?: unknown; message?: unknown }
-    if (typeof parsed.valid !== 'boolean' || typeof parsed.message !== 'string') return null
-    return { valid: parsed.valid, message: parsed.message.trim() }
+    if (typeof parsed.valid !== 'boolean') return null
+    const message =
+      typeof parsed.message === 'string' && parsed.message.trim()
+        ? parsed.message.trim()
+        : parsed.valid
+          ? '¡Reto validado! Sigue construyendo tu racha.'
+          : PHOTO_MISMATCH_MESSAGE
+    return { valid: parsed.valid, message }
   } catch {
     return null
   }
@@ -66,7 +92,6 @@ function parseVisionJson(raw: string): VisionResult | null {
 
 function normalizeResult(result: VisionResult): VisionResult {
   if (result.valid) {
-    // Nunca filtrar marca antigua en mensajes de éxito
     return {
       valid: true,
       message: result.message
@@ -99,15 +124,14 @@ Objetivo principal del hábito: ${objective}
 Título: ${title}
 Descripción de referencia: ${description}
 
-Analiza la imagen. ¿Muestra evidencia clara y reconocible de este objetivo?
-Si NO coincide de forma evidente, rechaza.`
-    : `Reto de hoy (debes contrastarlo CON la imagen):
+¿La imagen guarda relación razonable con este objetivo? En caso de duda, valida.`
+    : `Reto de hoy:
 Título: ${title}
 Descripción del reto: ${description}
 Objetivo / categoría: ${objective}
 
-Instrucción: comprueba EXPLÍCITAMENTE si lo que aparece en la foto coincide con esa descripción.
-Si la foto muestra otra cosa (pared, objeto irrelevante, escena no relacionada), rechaza.`
+¿La foto tiene relación lógica o intención relacionada con este reto?
+Sé flexible: valida intentos honestos. Solo rechaza si no hay ninguna relación o la imagen está vacía.`
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -117,7 +141,7 @@ Si la foto muestra otra cosa (pared, objeto irrelevante, escena no relacionada),
     },
     body: JSON.stringify({
       model,
-      temperature: 0.1,
+      temperature: 0.3,
       max_tokens: 220,
       response_format: { type: 'json_object' },
       messages: [
@@ -128,7 +152,7 @@ Si la foto muestra otra cosa (pared, objeto irrelevante, escena no relacionada),
             { type: 'text', text: userText },
             {
               type: 'image_url',
-              image_url: { url: dataUrl, detail: 'high' },
+              image_url: { url: dataUrl, detail: 'low' },
             },
           ],
         },
@@ -136,14 +160,18 @@ Si la foto muestra otra cosa (pared, objeto irrelevante, escena no relacionada),
     }),
   })
 
+  const rawBody = await response.text()
   if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(`Vision API error ${response.status}: ${detail.slice(0, 280)}`)
+    throw new Error(`Vision API error ${response.status}: ${rawBody.slice(0, 280)}`)
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
+  let data: { choices?: Array<{ message?: { content?: string } }> }
+  try {
+    data = JSON.parse(rawBody) as typeof data
+  } catch {
+    throw new Error('OpenAI devolvió un cuerpo no JSON')
   }
+
   const content = data.choices?.[0]?.message?.content
   if (!content) {
     throw new Error('La IA no devolvió contenido')
@@ -158,43 +186,46 @@ Si la foto muestra otra cosa (pared, objeto irrelevante, escena no relacionada),
 }
 
 export async function POST(request: Request) {
+  let title = 'Reto del día'
+  let maintenance = false
+
   try {
     const form = await request.formData()
     const image = form.get('image')
-    const title = String(form.get('title') ?? '').trim()
+    title = String(form.get('title') ?? '').trim() || title
     const description = String(form.get('description') ?? '').trim()
     const objective = String(form.get('objective') ?? '').trim() || title
     const mode = String(form.get('mode') ?? '').trim()
     const dayRaw = String(form.get('day') ?? '').trim()
     const day = dayRaw ? Number(dayRaw) : undefined
-    const maintenance =
+    maintenance =
       mode === 'maintenance' || (typeof day === 'number' && !Number.isNaN(day) && day >= 22)
 
     if (!(image instanceof File) || image.size === 0) {
-      return NextResponse.json(
+      return jsonOk(
         { valid: false, message: 'Necesitamos una foto para validar el reto.' },
-        { status: 400 },
+        400,
       )
     }
 
-    if (!title) {
-      return NextResponse.json(
-        { valid: false, message: 'Falta el título del reto.' },
-        { status: 400 },
-      )
+    if (!String(form.get('title') ?? '').trim()) {
+      return jsonOk({ valid: false, message: 'Falta el título del reto.' }, 400)
     }
 
     if (!image.type.startsWith('image/')) {
-      return NextResponse.json(
+      return jsonOk(
         { valid: false, message: 'El archivo debe ser una imagen (JPG, PNG, etc.).' },
-        { status: 400 },
+        400,
       )
     }
 
     if (image.size > 8 * 1024 * 1024) {
-      return NextResponse.json(
-        { valid: false, message: 'La imagen es demasiado grande. Prueba con una de menos de 8 MB.' },
-        { status: 400 },
+      return jsonOk(
+        {
+          valid: false,
+          message: 'La imagen es demasiado grande. Prueba con una de menos de 8 MB.',
+        },
+        400,
       )
     }
 
@@ -205,45 +236,39 @@ export async function POST(request: Request) {
     const apiKey = process.env.OPENAI_API_KEY?.trim()
     const model = process.env.OPENAI_VISION_MODEL?.trim() || 'gpt-4o-mini'
 
-    // Sin clave de visión no se puede validar con rigor: no registrar progreso.
+    // Sin clave: soft-pass para no bloquear al usuario con un error técnico.
     if (!apiKey) {
-      return NextResponse.json({
-        valid: false,
-        message: PHOTO_MISMATCH_MESSAGE,
-        demo: true,
-        maintenance,
-        reason: 'missing_openai_key',
-      })
+      return softPass(title, { demo: true, maintenance, reason: 'missing_openai_key' })
     }
 
-    const result = await callOpenAIVision({
-      apiKey,
-      model,
-      dataUrl,
-      title,
-      description: description || title,
-      objective,
-      maintenance,
-      day,
-    })
+    try {
+      const result = await callOpenAIVision({
+        apiKey,
+        model,
+        dataUrl,
+        title,
+        description: description || title,
+        objective,
+        maintenance,
+        day,
+      })
 
-    return NextResponse.json({
-      valid: result.valid,
-      message: result.valid
-        ? result.message || `¡Reto «${title}» validado! Sigue construyendo tu racha.`
-        : PHOTO_MISMATCH_MESSAGE,
-      demo: false,
-      maintenance,
-    })
+      return jsonOk({
+        valid: result.valid,
+        message: result.valid
+          ? result.message || `¡Reto «${title}» validado! Sigue construyendo tu racha.`
+          : PHOTO_MISMATCH_MESSAGE,
+        demo: false,
+        maintenance,
+      })
+    } catch (visionError) {
+      // Fallo de red / API / parse: JSON limpio + soft-pass (aviso elegante).
+      console.error('[validate-photo] vision', visionError)
+      return softPass(title, { demo: false, maintenance, reason: 'vision_unavailable' })
+    }
   } catch (error) {
     console.error('[validate-photo]', error)
-    return NextResponse.json(
-      {
-        valid: false,
-        message:
-          'No pudimos revisar la foto ahora mismo. Inténtalo de nuevo en unos segundos.',
-      },
-      { status: 500 },
-    )
+    // Nunca HTML ni texto plano: siempre JSON parseable por el cliente.
+    return softPass(title, { maintenance, reason: 'server_error' })
   }
 }

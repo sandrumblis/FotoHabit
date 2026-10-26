@@ -69,7 +69,6 @@ async function syncProfile(session: Session | null) {
     await ensureProfile({
       id: mapped.id,
       displayName: mapped.name,
-      level: 1,
     })
   } catch {
     /* El trigger de DB puede crear el perfil; no bloqueamos el login */
@@ -148,7 +147,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await ensureProfile({
           id: data.user.id,
           displayName,
-          level: 1,
         })
       }
     },
